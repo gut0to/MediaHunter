@@ -161,7 +161,7 @@ function Popup() {
       if (tab?.id === undefined || !/^https?:\/\//.test(tab.url ?? '')) throw new Error('Open an HTTP or HTTPS page to scan.');
       const tabId = tab.id;
       const page = new URL(tab.url!);
-      let candidates: Candidate[] = [];
+      let candidates: Candidate[];
       let nextWarnings: string[] = [];
       if (mode === 'site') {
         page.hash = '';
