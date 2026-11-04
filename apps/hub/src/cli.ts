@@ -1,10 +1,12 @@
 import { claimInput, uuid } from '@mediahunter/contracts';
+import { configuration } from './config.ts';
 import { buildApp } from './app.ts';
 import { openStore, hash, secret } from './store.ts';
 
 async function main() {
   process.umask(0o077);
-  const store = openStore(process.env.MEDIAHUNTER_DATA_DIR ?? './mediahunter-data');
+  const config = configuration.parse(process.env);
+  const store = openStore(config.MEDIAHUNTER_DATA_DIR);
   const [command = 'serve', argument] = process.argv.slice(2);
   if (command === 'pair') {
     const kind = claimInput.shape.kind.parse(argument);
@@ -30,9 +32,12 @@ async function main() {
     return;
   }
   if (command !== 'serve') throw new Error('Unknown command');
-  const origins = (process.env.MEDIAHUNTER_EXTENSION_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+  const origins = (config.MEDIAHUNTER_EXTENSION_ORIGINS).split(',').map(value => value.trim()).filter(Boolean);
   if (origins.some(value => !/^chrome-extension:\/\/[a-p]{32}$/.test(value))) throw new Error('Invalid extension origin');
-  const app = await buildApp(store, origins);
+  const app = await buildApp(store, origins, Date.now, {
+    sourceTTL: config.MEDIAHUNTER_SOURCE_TTL_MINUTES * 60_000,
+    historyTTL: config.MEDIAHUNTER_HISTORY_DAYS * 86_400_000,
+  });
   const stop = async () => {
     await app.close();
     store.db.close();
@@ -40,8 +45,8 @@ async function main() {
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   console.log(await app.listen({
-    host: process.env.MEDIAHUNTER_HOST ?? '127.0.0.1',
-    port: Number(process.env.MEDIAHUNTER_PORT ?? '8787'),
+    host: config.MEDIAHUNTER_HOST,
+    port: config.MEDIAHUNTER_PORT,
   }));
 }
 

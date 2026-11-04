@@ -56,6 +56,7 @@ type Format struct {
 }
 
 type Report struct {
+	TotalBytes      *int64   `json:"totalBytes,omitempty"`
 	Formats         []Format `json:"formats,omitempty"`
 	LeaseID         string   `json:"leaseId"`
 	BytesDownloaded int64    `json:"bytesDownloaded"`

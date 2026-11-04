@@ -3,9 +3,8 @@
 MediaHunter is experimental. Security fixes target the latest development
 version.
 
-Use **Report a vulnerability** in the repository's GitHub Security tab when
-private reporting is enabled. Otherwise contact a maintainer privately via a
-contact method on their GitHub profile. Include the affected commit, impact, and
+Use the repository's enabled [private vulnerability reporting channel](https://github.com/gut0to/MediaHunter/security/advisories/new).
+A maintainer's private contact method listed on their GitHub profile is another option. Include the affected commit, impact, and
 a minimal reproduction with synthetic credentials and URLs. Keep active
 vulnerability details out of public issues.
 

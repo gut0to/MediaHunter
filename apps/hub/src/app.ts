@@ -9,7 +9,7 @@ import { hash, secret, type Store } from './store.ts';
 const minute = 60_000;
 const leaseDuration = 45_000;
 const terminal = "('completed','failed','canceled','rescan_required')";
-const publicJob = 'id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode, purpose, formats_json';
+const publicJob = 'id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode, total_bytes AS totalBytes, purpose, formats_json';
 const formatJob = (value: unknown) => {
   const row = value as { formats_json?: string };
   return job.parse({ ...row, formats: row.formats_json ? JSON.parse(row.formats_json) : undefined });
@@ -26,11 +26,12 @@ class ApiError extends Error {
   }
 }
 
-export async function buildApp(store: Store, allowedOrigins: string[] = [], now = Date.now) {
+export async function buildApp(store: Store, allowedOrigins: string[] = [], now = Date.now,
+  retention = { sourceTTL: 30 * minute, historyTTL: 30 * 24 * 60 * minute }) {
   const { db } = store;
-  const app = Fastify({ bodyLimit: 512 * 1024, logger: false });
+  const app = Fastify({ bodyLimit: 512 * 1024, logger: false, requestTimeout: 15_000, connectionTimeout: 15_000 });
   await app.register(cors, { origin: allowedOrigins, methods: ['GET', 'POST', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] });
-  await app.register(rateLimit, { global: false });
+  await app.register(rateLimit, { global: true, max: 300, timeWindow: minute });
   app.addHook('onRequest', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
   });
@@ -47,13 +48,15 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       WHERE state NOT IN ${terminal} AND candidate_id IN
       (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires<=?)`).run(time, time);
     db.prepare(`UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'failed' ELSE 'queued' END,
-      error_code=CASE WHEN attempts>=3 THEN 'LEASE_LOST' ELSE NULL END, bytes_downloaded=0,
+      error_code=CASE WHEN attempts>=3 THEN 'LEASE_LOST' ELSE NULL END, bytes_downloaded=0, total_bytes=NULL,
       lease_id=NULL, lease_until=NULL, updated=? WHERE state IN ('leased','downloading') AND lease_until<=?`).run(time, time);
     db.prepare('DELETE FROM scans WHERE expires<=?').run(time);
     db.prepare('DELETE FROM pairing_codes WHERE expires<=?').run(time);
-    db.prepare(`DELETE FROM jobs WHERE state IN ${terminal} AND updated<=?`).run(time - 30 * 24 * 60 * minute);
+    db.prepare(`DELETE FROM jobs WHERE state IN ${terminal} AND updated<=?`).run(time - retention.historyTTL);
   });
-  const timer = setInterval(() => clean.immediate(now()), minute);
+  const timer = setInterval(() => {
+    try { clean.immediate(now()); } catch { console.error(JSON.stringify({ event: 'retention_failed' })); }
+  }, minute);
   timer.unref();
   app.addHook('onClose', () => clearInterval(timer));
 
@@ -100,7 +103,7 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const count = db.prepare('SELECT count(*) AS count FROM scans WHERE owner=? AND expires>?').get(owner, time) as { count: number };
       if (count.count >= 100) throw new ApiError(429, 'SCAN_LIMIT');
       const id = randomUUID();
-      db.prepare('INSERT INTO scans VALUES (?,?,?,?)').run(id, owner, input.pageOrigin, time + 30 * minute);
+      db.prepare('INSERT INTO scans VALUES (?,?,?,?)').run(id, owner, input.pageOrigin, time + retention.sourceTTL);
       const insert = db.prepare('INSERT INTO candidates VALUES (?,?,?,?)');
       const candidateIds = input.candidates.map(({ url, ...metadata }) => {
         const candidateId = randomUUID();
@@ -143,7 +146,7 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
           input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null, input.destinationProfileId);
-      return job.parse({ id, state: 'queued', bytesDownloaded: 0, errorCode: null, purpose: input.purpose });
+      return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     }).immediate();
   });
 
@@ -170,13 +173,48 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       clean.immediate(time);
       const changed = action === 'pause'
         ? db.prepare("UPDATE jobs SET state='paused',lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('queued','leased','downloading')").run(time, id, owner)
-        : db.prepare(`UPDATE jobs SET state='queued',attempts=0,bytes_downloaded=0,error_code=NULL,formats_json=NULL,
+        : db.prepare(`UPDATE jobs SET state='queued',attempts=0,bytes_downloaded=0,total_bytes=NULL,error_code=NULL,formats_json=NULL,
           lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('paused','failed') AND candidate_id IN
           (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires>?)`).run(time, id, owner, time);
       if (!changed.changes) throw new ApiError(409, 'JOB_ACTION_UNAVAILABLE');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     });
   }
+
+  app.delete(path + '/jobs', request => {
+    const owner = authenticate(request, 'extension');
+    const result = db.prepare(`DELETE FROM jobs WHERE owner=? AND state IN ${terminal}`).run(owner);
+    return { removed: result.changes };
+  });
+
+  app.post(path + '/jobs/:id/open', request => {
+    const owner = authenticate(request, 'extension');
+    const { id } = z.object({ id: uuid }).parse(request.params);
+    const { action } = z.object({ action: z.enum(['file', 'folder']) }).parse(request.body);
+    return db.transaction(() => {
+      const row = db.prepare("SELECT agent FROM jobs WHERE id=? AND owner=? AND state='completed' AND purpose='download'").get(id, owner) as { agent: string } | undefined;
+      if (!row) throw new ApiError(404, 'COMPLETED_DOWNLOAD_NOT_FOUND');
+      const pending = db.prepare('SELECT count(*) AS count FROM device_actions WHERE agent=? AND consumed IS NULL AND created>?').get(row.agent, now() - minute) as { count: number };
+      if (pending.count >= 20) throw new ApiError(429, 'ACTION_LIMIT');
+      db.prepare('INSERT INTO device_actions (id,job_id,agent,action,created) VALUES (?,?,?,?,?)')
+        .run(randomUUID(), id, row.agent, action, now());
+      return { requested: true };
+    }).immediate();
+  });
+
+  app.post(path + '/agent/actions/lease', request => {
+    const agent = authenticate(request, 'windows_agent');
+    return db.transaction(() => {
+      const time = now();
+      db.prepare('DELETE FROM device_actions WHERE created<?').run(time - minute);
+      const next = db.prepare(`SELECT a.id,a.job_id AS jobId,a.action FROM device_actions a JOIN jobs j ON j.id=a.job_id
+        WHERE a.agent=? AND a.consumed IS NULL AND j.state='completed' AND j.purpose='download' ORDER BY a.created LIMIT 1`)
+        .get(agent) as { id: string; jobId: string; action: 'file' | 'folder' } | undefined;
+      if (!next) return null;
+      db.prepare('UPDATE device_actions SET consumed=? WHERE id=?').run(time, next.id);
+      return next;
+    }).immediate();
+  });
 
   app.post(path + '/agent/jobs/lease', request => {
     const agent = authenticate(request, 'windows_agent');
@@ -209,10 +247,10 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const state = action === 'heartbeat' ? 'downloading' : action === 'complete' ? 'completed' :
         report.errorCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
       const changed = db.prepare(`UPDATE jobs SET state=?, bytes_downloaded=COALESCE(?, bytes_downloaded), error_code=?,
-        lease_until=?, updated=?, formats_json=COALESCE(?, formats_json) WHERE id=? AND agent=? AND lease_id=? AND
+        lease_until=?, updated=?, formats_json=COALESCE(?, formats_json), total_bytes=COALESCE(?, total_bytes) WHERE id=? AND agent=? AND lease_id=? AND
         (state IN ('leased','downloading') OR state=?)`).run(state, report.bytesDownloaded ?? null,
         action === 'fail' ? report.errorCode ?? 'DOWNLOAD_FAILED' : null, action === 'heartbeat' ? time + leaseDuration : null,
-        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, id, agent, report.leaseId, state);
+        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, report.totalBytes ?? null, id, agent, report.leaseId, state);
       if (!changed.changes) throw new ApiError(409, 'LEASE_LOST');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     });

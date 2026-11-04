@@ -11,6 +11,7 @@ case "$(uname -m)" in
 esac
 node -e 'if (Number(process.versions.node.split(".")[0]) !== 24) process.exit(1)'
 command -v pnpm >/dev/null
+command -v curl >/dev/null
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 base=/opt/mediahunter
@@ -40,7 +41,24 @@ systemctl daemon-reload
 previous=$(readlink "$base/current" || true)
 ln -s "$stage" "$stage.next"
 mv -Tf "$stage.next" "$base/current"
-if ! systemctl enable --now mediahunter-hub || ! systemctl restart mediahunter-hub; then
+healthy=false
+if systemctl enable --now mediahunter-hub && systemctl restart mediahunter-hub; then
+  port=$(sed -n 's/^MEDIAHUNTER_PORT=\([0-9][0-9]*\)$/\1/p' /etc/mediahunter/hub.env)
+  port=${port:-8787}
+  host=$(sed -n 's/^MEDIAHUNTER_HOST=\(.*\)$/\1/p' /etc/mediahunter/hub.env)
+  case "$host" in
+    ::1) host='[::1]' ;;
+    *) host=127.0.0.1 ;;
+  esac
+  for attempt in 1 2 3 4 5; do
+    if curl --fail --silent --max-time 2 "http://$host:$port/api/v1/health" >/dev/null; then
+      healthy=true
+      break
+    fi
+    sleep 1
+  done
+fi
+if [ "$healthy" != true ]; then
   if [ -n "$previous" ]; then
     ln -s "$previous" "$stage.rollback"
     mv -Tf "$stage.rollback" "$base/current"

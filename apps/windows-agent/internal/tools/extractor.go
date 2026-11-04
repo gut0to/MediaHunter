@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -27,7 +27,11 @@ const (
 	Unsupported downloader.Failure = "UNSUPPORTED_FORMAT"
 )
 
-type Config struct{ YTDLP, FFmpeg string }
+type Config struct {
+	YTDLP, FFmpeg string
+	MaxBytes      int64
+	TempDir       string
+}
 
 var identifier = regexp.MustCompile("^[a-zA-Z0-9_.-]{1,80}$")
 
@@ -67,6 +71,10 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 	if _, err := downloader.CheckSource(lease.URL); err != nil {
 		return downloader.Result{}, nil, err
 	}
+	limit := config.MaxBytes
+	if limit <= 0 || limit > downloader.MaxBytes {
+		limit = downloader.MaxBytes
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	if lease.Delivery == "hls" || lease.Delivery == "dash" {
@@ -90,7 +98,8 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 		return downloader.Result{}, available, nil
 	}
 
-	selector, needsMerge := "bv*+ba/b", true
+	filter := "[protocol~='^(https?|m3u8_native|http_dash_segments)$']"
+	selector, needsMerge := "bv*"+filter+"+ba"+filter+"/b"+filter, true
 	if lease.RequestedFormat != nil {
 		selector = *lease.RequestedFormat
 		var found bool
@@ -104,14 +113,17 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 			return downloader.Result{}, nil, Unsupported
 		}
 		if needsMerge {
-			selector += "+ba"
+			selector += filter + "+ba" + filter
 		}
+	}
+	if lease.RequestedFormat != nil && !needsMerge {
+		selector += filter
 	}
 	if needsMerge && !executable(config.FFmpeg) {
 		if lease.RequestedFormat != nil {
 			return downloader.Result{}, nil, Unavailable
 		}
-		selector = "b"
+		selector = "b" + filter
 	}
 	if len(available) == 0 || info != "" && info != "video" {
 		return downloader.Result{}, nil, Unsupported
@@ -119,19 +131,55 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 
 	// Stage tool output in a fresh private temporary directory. Copy into the
 	// rooted destination using an exclusive lease-specific part file.
-	directory, err := os.MkdirTemp("", "mediahunter-extract-")
+	directory, err := os.MkdirTemp(config.TempDir, "mediahunter-extract-")
 	if err != nil {
 		return downloader.Result{}, nil, downloader.Destination
 	}
 	defer os.RemoveAll(directory)
-	args := append(append([]string{}, common...), "--no-progress", "--max-filesize", "10G",
+	args := append(append([]string{}, common...), "--no-progress", "--max-filesize", strconv.FormatInt(limit, 10),
 		"--merge-output-format", "mkv", "-f", selector, "-o", filepath.Join(directory, "media.%(ext)s"))
 	if executable(config.FFmpeg) {
 		args = append(args, "--ffmpeg-location", config.FFmpeg)
 	}
-	command := exec.CommandContext(ctx, config.YTDLP, append(args, "--", lease.URL)...)
+	command := commandContext(ctx, config.YTDLP, append(args, "--", lease.URL)...)
 	command.Stdout, command.Stderr = io.Discard, io.Discard
-	if err := command.Run(); err != nil {
+	var exceeded atomic.Bool
+	finished := make(chan struct{})
+	observed := make(chan struct{})
+	go func() {
+		defer close(observed)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				files, _ := os.ReadDir(directory)
+				var size int64
+				for _, file := range files {
+					if info, err := file.Info(); err == nil {
+						size += info.Size()
+					}
+				}
+				progress.Store(size)
+				if size > 2*limit || len(files) > 500 {
+					exceeded.Store(true)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	runErr := command.Run()
+	close(finished)
+	<-observed
+	if exceeded.Load() {
+		return downloader.Result{}, nil, downloader.TooLarge
+	}
+	if runErr != nil {
 		return downloader.Result{}, nil, Unsupported
 	}
 	files, err := os.ReadDir(directory)
@@ -152,7 +200,7 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 	if executable(config.FFmpeg) {
 		probe := filepath.Join(filepath.Dir(config.FFmpeg), "ffprobe.exe")
 		if executable(probe) {
-			check := exec.CommandContext(ctx, probe, "-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", input.Name())
+			check := commandContext(ctx, probe, "-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", input.Name())
 			check.Stdout, check.Stderr = io.Discard, io.Discard
 			if check.Run() != nil {
 				return downloader.Result{}, nil, Unsupported
@@ -165,9 +213,9 @@ func (config Config) run(ctx context.Context, client *http.Client, root *os.Root
 		return downloader.Result{}, nil, downloader.Destination
 	}
 	hash := sha256.New()
-	result.Bytes, err = io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, downloader.MaxBytes+1))
+	result.Bytes, err = io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, limit+1))
 	syncErr, closeErr := output.Sync(), output.Close()
-	if result.Bytes > downloader.MaxBytes || result.Bytes <= 0 || err != nil || syncErr != nil || closeErr != nil || ctx.Err() != nil {
+	if result.Bytes > limit || result.Bytes <= 0 || err != nil || syncErr != nil || closeErr != nil || ctx.Err() != nil {
 		_ = root.Remove(result.Part)
 		return downloader.Result{}, nil, downloader.Failed
 	}
@@ -196,25 +244,25 @@ func inspect(ctx context.Context, client *http.Client, tool string, common []str
 	probeCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	args := append(append([]string{}, common...), "--dump-single-json", "--skip-download", "--", source)
-	command := exec.CommandContext(probeCtx, tool, args...)
+	command := commandContext(probeCtx, tool, args...)
 	var output boundedBuffer
 	command.Stdout, command.Stderr = &output, io.Discard
 	if command.Run() != nil {
 		return "", nil, Unsupported
 	}
 	var metadata struct {
-		Type     string   `json:"_type"`
-		Formats  []format `json:"formats"`
-		DRM      any      `json:"has_drm"`
-		URL      string   `json:"url"`
-		Manifest string   `json:"manifest_url"`
-		Protocol string   `json:"protocol"`
+		format
+		Type    string   `json:"_type"`
+		Formats []format `json:"formats"`
 	}
 	if json.Unmarshal(output.Bytes(), &metadata) != nil || metadata.Type == "playlist" || metadata.Type == "multi_video" {
 		return "", nil, Unsupported
 	}
 	if metadata.DRM == true {
 		return "", nil, Protected
+	}
+	if len(metadata.Formats) == 0 && identifier.MatchString(metadata.ID) {
+		metadata.Formats = []format{metadata.format}
 	}
 	result := make([]api.Format, 0, 100)
 	checked := make(map[string]bool)
@@ -238,6 +286,9 @@ func inspect(ctx context.Context, client *http.Client, tool string, common []str
 			if err := preflight(ctx, client, manifest, delivery); err != nil {
 				return "", nil, err
 			}
+		}
+		if entry.Protocol != "http" && entry.Protocol != "https" && entry.Protocol != "m3u8_native" && entry.Protocol != "http_dash_segments" {
+			continue
 		}
 		if !identifier.MatchString(entry.ID) || len(entry.Extension) > 20 {
 			continue

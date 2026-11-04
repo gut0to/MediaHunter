@@ -12,10 +12,17 @@ import (
 var retryable = errors.New("temporary origin response")
 
 func Download(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64) (Result, error) {
+	return DownloadLimited(ctx, client, root, id, lease, source, mediaType, progress, MaxBytes, nil)
+}
+
+func DownloadLimited(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64, limit int64, total *atomic.Int64) (Result, error) {
+	if limit <= 0 || limit > MaxBytes {
+		limit = MaxBytes
+	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		progress.Store(0)
-		result, err := downloadOnce(ctx, client, root, id, lease, source, mediaType, progress)
+		result, err := downloadOnce(ctx, client, root, id, lease, source, mediaType, progress, limit, total)
 		if err == nil {
 			return result, nil
 		}

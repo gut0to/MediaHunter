@@ -138,7 +138,7 @@ var extensions = map[string]string{
 	"video/x-m4v": ".m4v", "video/ogg": ".ogv",
 }
 
-func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64) (Result, error) {
+func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64, limit int64, total *atomic.Int64) (Result, error) {
 	if !ValidID(id) || !ValidID(lease) {
 		return Result{}, Destination
 	}
@@ -164,8 +164,14 @@ func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, l
 	if response.StatusCode != 200 {
 		return Result{}, HTTPError
 	}
-	if response.ContentLength > MaxBytes {
+	if total != nil {
+		total.Store(response.ContentLength)
+	}
+	if response.ContentLength > limit {
 		return Result{}, TooLarge
+	}
+	if err := checkSpace(root, response.ContentLength); err != nil {
+		return Result{}, err
 	}
 	if response.Header.Get("Content-Encoding") != "" && response.Header.Get("Content-Encoding") != "identity" {
 		return Result{}, Invalid
@@ -209,8 +215,8 @@ func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, l
 	digest := sha256.New()
 	writer := io.MultiWriter(file, digest, progressWriter{progress})
 	reader := io.MultiReader(bytes.NewReader(prefix[:size]), response.Body)
-	result.Bytes, err = io.Copy(writer, io.LimitReader(reader, MaxBytes+1))
-	if err != nil && ctx.Err() == nil && result.Bytes > 0 && result.Bytes < MaxBytes {
+	result.Bytes, err = io.Copy(writer, io.LimitReader(reader, limit+1))
+	if err != nil && ctx.Err() == nil && result.Bytes > 0 && result.Bytes < limit {
 		validator := response.Header.Get("ETag")
 		if strings.HasPrefix(validator, "W/") {
 			validator = ""
@@ -230,7 +236,7 @@ func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, l
 					if continued.StatusCode == 206 && continued.Header.Get("Content-Range") == expected &&
 						(continued.Header.Get("ETag") == "" || continued.Header.Get("ETag") == response.Header.Get("ETag")) {
 						var copied int64
-						copied, err = io.Copy(writer, io.LimitReader(continued.Body, MaxBytes-result.Bytes+1))
+						copied, err = io.Copy(writer, io.LimitReader(continued.Body, limit-result.Bytes+1))
 						result.Bytes += copied
 					}
 					_ = continued.Body.Close()
@@ -241,7 +247,7 @@ func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, l
 	if err != nil || ctx.Err() != nil {
 		return Result{}, Failed
 	}
-	if result.Bytes > MaxBytes {
+	if result.Bytes > limit {
 		return Result{}, TooLarge
 	}
 	if response.ContentLength >= 0 && response.ContentLength != result.Bytes {

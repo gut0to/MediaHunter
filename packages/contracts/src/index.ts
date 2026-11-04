@@ -36,7 +36,7 @@ export const jobState = z.enum(['queued', 'leased', 'downloading', 'completed', 
 export const failure = z.enum(['DOWNLOAD_FAILED', 'HTTP_ERROR', 'EXPIRED_URL', 'UNSAFE_SOURCE', 'INVALID_MEDIA', 'SIZE_LIMIT', 'DESTINATION_ERROR', 'LEASE_LOST', 'TOOL_UNAVAILABLE', 'PROTECTED_MEDIA', 'UNSUPPORTED_FORMAT']);
 export const bytes = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const job = z.object({ id: uuid, state: jobState, bytesDownloaded: bytes, errorCode: failure.nullable(),
-  purpose: z.enum(['probe', 'download']).optional(), formats: z.array(mediaFormat).max(100).optional() });
+  totalBytes: bytes.nullable().optional(), purpose: z.enum(['probe', 'download']).optional(), formats: z.array(mediaFormat).max(100).optional() });
 export const agents = z.array(z.object({ id: uuid, name: z.string(), online: z.boolean(), profiles: z.array(profileId).max(20) }));
 export const scanResult = z.object({ id: uuid, candidateIds: z.array(uuid) });
 export const lease = z.object({
@@ -47,5 +47,5 @@ export const lease = z.object({
   destinationProfileId: profileId,
   delivery: z.enum(['direct', 'hls', 'dash', 'site']), purpose: z.enum(['download', 'probe']), requestedFormat: formatId.nullable(),
 });
-export const leaseReport = z.object({ leaseId: uuid, bytesDownloaded: bytes.optional(), errorCode: failure.optional(), formats: z.array(mediaFormat).max(100).optional() });
+export const leaseReport = z.object({ leaseId: uuid, bytesDownloaded: bytes.optional(), totalBytes: bytes.optional(), errorCode: failure.optional(), formats: z.array(mediaFormat).max(100).optional() });
 export const error = z.object({ code: z.string() });

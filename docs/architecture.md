@@ -37,6 +37,9 @@ JSON error responses contain a stable `code`.
 | POST /jobs/:id/cancel | Extension | Cancel the caller's unfinished job |
 | POST /jobs/:id/pause | Extension | Stop an active transfer and hold the job |
 | POST /jobs/:id/retry | Extension | Resume or retry a valid source |
+| DELETE /jobs | Extension | Delete the caller's finished history |
+| POST /jobs/:id/open | Extension | Request opening a completed file or folder |
+| POST /agent/actions/lease | Agent | Consume a time-limited open action |
 | POST /agent/jobs/lease | Agent | Claim one assigned job or receive null |
 | POST /agent/jobs/:id/heartbeat | Agent | Confirm the lease and report progress |
 | POST /agent/jobs/:id/complete | Agent | Acknowledge a published file |
@@ -55,7 +58,8 @@ The Windows agent protects its token with user-scoped DPAPI. It maps the Hub lea
 block private IPs after DNS resolution and validate each redirect. Requests use
 standard HTTP(S) ports and do not send browser credentials. Files stream into
 a rooted, unique partial path. Publication uses an atomic hard link with no
-replacement. The final filename is derived from the job ID and media type.
+replacement. The final filename is derived from the job ID and media type. Completed files get a local receipt used to validate
+explicit open actions. The Hub never supplies an arbitrary local path.
 A retransmission only accepts an existing final file when its contents match.
 
 The agent supports two transfers concurrently and a 10 GiB limit per
