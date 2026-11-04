@@ -21,10 +21,19 @@ export function scanPage(): Candidate[] {
   }
 
   function addSrcset(value: string | null, source: 'srcset' | 'picture') {
-    // URL tokens can include commas (for example in signed query values).
-    const tokens = value?.matchAll(/[^\s,][^\s]*(?:\s+[^,]*)?/g) ?? [];
-    for (const [token] of tokens) {
-      add(token.trim().split(/\s+/, 1)[0].replace(/,+$/, ''), source, 'image');
+    let remaining = value ?? '';
+    while (results.size < 200) {
+      // Collect the URL token before looking for descriptor separators. A
+      // comma can belong to the URL, while a trailing comma ends this item.
+      const token = /^[\s,]*(\S+)/.exec(remaining);
+      if (!token) break;
+      const raw = token[1];
+      add(raw.replace(/,+$/, ''), source, 'image');
+      remaining = remaining.slice(token[0].length);
+      if (raw.endsWith(',')) continue;
+      const separator = remaining.indexOf(',');
+      if (separator < 0) break;
+      remaining = remaining.slice(separator + 1);
     }
   }
 
