@@ -26,10 +26,13 @@ type settings struct {
 	Destination    string
 	Profiles       map[string]string
 	Tools          tools.Config
+	MaxBytes       int64
 	Origin         string
 	ID             string
 	ProtectedToken []byte
 }
+
+var agentEvents *config.Logger
 
 var codePattern = regexp.MustCompile("^[0-9a-f]{16}$")
 var tokenPattern = regexp.MustCompile("^[0-9a-f]{64}$")
@@ -53,7 +56,7 @@ func save(path string, cfg settings) error {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: mediahunter-agent configure <folder> | pair <Hub origin> | start | status | unpair")
+		return errors.New("usage: mediahunter-agent install [--autostart] | configure <folder> [profile] | tools <yt-dlp> <ffmpeg> | limits <bytes> | pair <Hub origin> | start | status | diagnose | unpair | uninstall [--credentials]")
 	}
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
@@ -70,6 +73,9 @@ func run(ctx context.Context, args []string) error {
 			return errors.New("invalid settings file")
 		}
 	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if handled, err := lifecycle(ctx, args, directory, path, &cfg); handled {
 		return err
 	}
 	switch args[0] {
@@ -172,14 +178,38 @@ func run(ctx context.Context, args []string) error {
 			defer root.Close()
 			roots[name] = root
 		}
-		poll(ctx, api.Client{Origin: cfg.Origin, Token: string(token)}, roots, cfg.Tools)
+		unlock, err := config.LockInstance(directory)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		if cfg.MaxBytes == 0 {
+			cfg.MaxBytes = downloader.MaxBytes
+		}
+		cfg.Tools.MaxBytes = cfg.MaxBytes
+		cfg.Tools.TempDir = filepath.Join(directory, "temp")
+		if err := os.MkdirAll(cfg.Tools.TempDir, 0700); err != nil {
+			return err
+		}
+		cleanupToolDirectories(cfg.Tools.TempDir)
+		logger := config.NewLogger(filepath.Join(directory, "logs"))
+		agentEvents = logger
+		for _, root := range roots {
+			cleanupPartials(root)
+		}
+		logger.Event("agent_started", "")
+		defer logger.Event("agent_stopped", "")
+		poll(ctx, api.Client{Origin: cfg.Origin, Token: string(token)}, roots, cfg.Tools, filepath.Join(directory, "receipts"))
 		return nil
 	default:
 		return errors.New("unknown command")
 	}
 }
 
-func poll(ctx context.Context, hub api.Client, roots map[string]*os.Root, toolsConfig tools.Config) {
+func poll(ctx context.Context, hub api.Client, roots map[string]*os.Root, toolsConfig tools.Config, receipts string) {
+	actionCtx, stopActions := context.WithCancel(ctx)
+	defer stopActions()
+	go pollActions(actionCtx, hub, roots, receipts)
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	slots := make(chan struct{}, 2)
@@ -204,7 +234,7 @@ func poll(ctx context.Context, hub api.Client, roots map[string]*os.Root, toolsC
 				go func() {
 					defer workers.Done()
 					defer func() { <-slots }()
-					handle(ctx, hub, media, root, *lease, toolsConfig)
+					handle(ctx, hub, media, root, *lease, toolsConfig, receipts)
 				}()
 				continue
 			}
@@ -218,13 +248,22 @@ func poll(ctx context.Context, hub api.Client, roots map[string]*os.Root, toolsC
 	}
 }
 
-func handle(ctx context.Context, hub api.Client, media *http.Client, root *os.Root, lease api.Lease, toolsConfig tools.Config) {
+func handle(ctx context.Context, hub api.Client, media *http.Client, root *os.Root, lease api.Lease, toolsConfig tools.Config, receipts string) {
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	path := "/agent/jobs/" + lease.ID
 	var progress atomic.Int64
+	var total atomic.Int64
+	if config.CheckSpace(root.Name(), 64<<20) != nil {
+		_ = hub.Post(ctx, path+"/fail", api.Report{LeaseID: lease.LeaseID, ErrorCode: "DESTINATION_ERROR"}, nil)
+		return
+	}
 	report := func() api.Report {
-		return api.Report{LeaseID: lease.LeaseID, BytesDownloaded: progress.Load()}
+		value := api.Report{LeaseID: lease.LeaseID, BytesDownloaded: progress.Load()}
+		if size := total.Load(); size > 0 {
+			value.TotalBytes = &size
+		}
+		return value
 	}
 	if hub.Post(jobCtx, path+"/heartbeat", report(), nil) != nil {
 		return
@@ -261,7 +300,7 @@ func handle(ctx context.Context, hub api.Client, media *http.Client, root *os.Ro
 	if lease.Delivery != "" && lease.Delivery != "direct" {
 		result, formats, err = toolsConfig.Run(jobCtx, media, root, lease, &progress)
 	} else {
-		result, err = downloader.Download(jobCtx, media, root, lease.ID, lease.LeaseID, lease.URL, lease.MediaType, &progress)
+		result, err = downloader.DownloadLimited(jobCtx, media, root, lease.ID, lease.LeaseID, lease.URL, lease.MediaType, &progress, toolsConfig.MaxBytes, &total)
 	}
 	if result.Part != "" {
 		defer root.Remove(result.Part)
@@ -289,9 +328,19 @@ func handle(ctx context.Context, hub api.Client, media *http.Client, root *os.Ro
 		sendFailure(jobCtx, hub, path, report(), err)
 		return
 	}
+	if err := saveReceipt(receipts, lease, result); err != nil {
+		if published {
+			_ = root.Remove(result.Final)
+		}
+		sendFailure(jobCtx, hub, path, report(), downloader.Destination)
+		return
+	}
 	for attempt := 0; attempt < 3; attempt++ {
 		err = hub.Post(jobCtx, path+"/complete", report(), nil)
 		if err == nil {
+			if agentEvents != nil {
+				agentEvents.Event("download_completed", "")
+			}
 			return
 		}
 		if errors.Is(err, api.ErrLeaseLost) {
@@ -312,6 +361,9 @@ func sendFailure(ctx context.Context, hub api.Client, path string, report api.Re
 		failure = downloader.Failed
 	}
 	report.ErrorCode = string(failure)
+	if agentEvents != nil {
+		agentEvents.Event("download_failed", report.ErrorCode)
+	}
 	_ = hub.Post(ctx, path+"/fail", report, nil)
 }
 
