@@ -185,10 +185,26 @@ function Popup() {
       } else {
         setCaptureTab(tabId);
         try {
-          const [execution] = await chrome.scripting.executeScript({ target: { tabId }, func: discover, args: [5000] });
-          if (!execution?.result) throw new Error('Chromium could not scan this tab.');
-          candidates = candidate.array().parse(execution.result.candidates);
-          nextWarnings = execution.result.warnings;
+          let executions: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof discover>>>[];
+          try {
+            executions = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: discover, args: [5000] });
+          } catch {
+            executions = await chrome.scripting.executeScript({ target: { tabId }, func: discover, args: [5000] });
+            nextWarnings.push('Some frames could not be scanned with the current permissions.');
+          }
+          if (!executions.some(execution => execution.result)) throw new Error('Chromium could not scan this tab.');
+          const collected = new Map<string, Candidate>();
+          for (const execution of executions) {
+            if (!execution.result) continue;
+            for (const item of candidate.array().parse(execution.result.candidates)) {
+              if (!collected.has(item.url) && collected.size < 200) {
+                collected.set(item.url, { ...item, groupKey: item.groupKey ? execution.frameId + ':' + item.groupKey : undefined });
+              }
+            }
+            nextWarnings.push(...execution.result.warnings);
+          }
+          candidates = [...collected.values()];
+          nextWarnings = [...new Set(nextWarnings)];
         } finally {
           setCaptureTab(undefined);
         }
@@ -206,7 +222,7 @@ function Popup() {
   function stopScan() {
     if (captureTab === undefined) return;
     window.dispatchEvent(new Event('stop-capture'));
-    void chrome.scripting.executeScript({ target: { tabId: captureTab }, func: () => {
+    void chrome.scripting.executeScript({ target: { tabId: captureTab, allFrames: true }, func: () => {
       (globalThis as typeof globalThis & { mediaHunterStop?: () => void }).mediaHunterStop?.();
     } }).catch(() => undefined);
   }
