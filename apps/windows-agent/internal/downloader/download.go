@@ -170,6 +170,9 @@ func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, l
 	if response.ContentLength > limit {
 		return Result{}, TooLarge
 	}
+	if err := checkSpace(root, response.ContentLength); err != nil {
+		return Result{}, err
+	}
 	if response.Header.Get("Content-Encoding") != "" && response.Header.Get("Content-Encoding") != "identity" {
 		return Result{}, Invalid
 	}
