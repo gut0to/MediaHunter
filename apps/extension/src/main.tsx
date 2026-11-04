@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { agents, candidate, claimInput, error, job, pairing, scanResult, uuid, type Candidate } from '@mediahunter/contracts';
 import { discover } from './discovery';
@@ -19,9 +19,9 @@ function hubOrigin(raw: string) {
   return url;
 }
 
-async function api(connection: Connection, path: string, body?: unknown): Promise<unknown> {
+async function api(connection: Connection, path: string, body?: unknown, method?: string): Promise<unknown> {
   const response = await fetch(connection.origin + '/api/v1' + path, {
-    method: body === undefined ? 'GET' : 'POST',
+    method: method ?? (body === undefined ? 'GET' : 'POST'),
     headers: {
       ...(connection.token ? { Authorization: 'Bearer ' + connection.token } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -44,6 +44,9 @@ function Popup() {
   const [devices, setDevices] = useState<Agent[]>([]);
   const [target, setTarget] = useState('');
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [rates,setRates]=useState<Record<string,number>>({});
+  const previous=useRef<{time:number;jobs:Job[]}>({time:Date.now(),jobs:[]});
+  const [historyQuery,setHistoryQuery]=useState('');
   const [queued, setQueued] = useState<string[]>([]);
   const [keys] = useState(() => new Map<string, string>());
   const [online, setOnline] = useState(false);
@@ -68,9 +71,9 @@ function Popup() {
 
   useEffect(() => {
     void chrome.storage.session.get('lastScan').then(value => {
-      const saved = value.lastScan as { results?: unknown; warnings?: unknown } | undefined;
+      const saved = value.lastScan as { results?: unknown; warnings?: unknown; expires?: number } | undefined;
       const parsed = candidate.extend({ id: uuid }).array().max(200).safeParse(saved?.results);
-      if (parsed.success) {
+      if (parsed.success && saved?.expires && saved.expires>Date.now()) {
         setResults(parsed.data);
         setWarnings(Array.isArray(saved?.warnings) ? saved.warnings.filter((entry): entry is string => typeof entry === 'string').slice(0, 20) : []);
         setScanned(true);
@@ -107,7 +110,15 @@ function Popup() {
         setOnline(true);
         setDevices(nextDevices);
         setTarget(value => nextDevices.some(agent => agent.id === value) ? value : nextDevices[0]?.id ?? '');
-        setJobs(job.array().parse(jobResponse));
+        const nextJobs=job.array().parse(jobResponse);
+        const time=Date.now();
+        const seconds=(time-previous.current.time)/1000;
+        setRates(Object.fromEntries(nextJobs.map(item=>{
+          const old=previous.current.jobs.find(entry=>entry.id===item.id);
+          return [item.id,old&&seconds>0?Math.max(0,(item.bytesDownloaded-old.bytesDownloaded)/seconds):0];
+        })));
+        previous.current={time,jobs:nextJobs};
+        setJobs(nextJobs);
       } catch {
         if (!closed) setOnline(false);
       } finally {
@@ -215,7 +226,7 @@ function Popup() {
       setResults(nextResults);
       setWarnings(nextWarnings);
       setScanned(true);
-      await chrome.storage.session.set({ lastScan: { results: nextResults, warnings: nextWarnings } });
+      await chrome.storage.session.set({ lastScan: { results: nextResults, warnings: nextWarnings, expires:Date.now()+30*60_000 } });
     });
   }
 
@@ -259,6 +270,7 @@ function Popup() {
   const visible = groupVariants(results.filter(item => filter === 'all' || filter === item.mediaType));
   const chosen = visible.map(group => group.variants.find(item => item.id === variants[group.id]) ?? group.variants[0]);
   const chosenSelected = chosen.filter(item => selected.includes(item.id) && !queued.includes(keyFor(item)));
+  const history=jobs.filter(item=>!historyQuery || (item.id+' '+item.state+' '+(item.errorCode??'')).toLowerCase().includes(historyQuery.toLowerCase()));
   const activeJobs = jobs.filter(item => item.purpose !== 'probe' && ['queued', 'leased', 'downloading', 'paused'].includes(item.state));
 
   return <main className={panel ? 'panel' : undefined}>
@@ -338,11 +350,34 @@ function Popup() {
         })}
       </section>}
       <section aria-label="Downloads"><h2>Downloads</h2>
+        <label>Search history<input type="search" value={historyQuery} onChange={event=>setHistoryQuery(event.target.value)} /></label>
+        <div className="media-actions">
+          <button disabled={busy} onClick={()=>void run(async()=>{
+            const data=JSON.stringify(jobs,null,2);
+            const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+            try {
+              if (!await chrome.permissions.request({permissions:['downloads']})) throw new Error('Download permission was declined.');
+              await chrome.downloads.download({url,filename:'mediahunter-history.json',saveAs:true});
+            } finally {setTimeout(()=>URL.revokeObjectURL(url),60_000);}
+          })}>Export JSON</button>
+          <button disabled={busy||!online} onClick={()=>void run(async()=>{
+            await api(connection,'/jobs',undefined,'DELETE');
+            setJobs(current=>current.filter(item=>['queued','leased','downloading','paused'].includes(item.state)));
+          })}>Clear finished history</button>
+        </div>
         {!jobs.length && <p>No downloads queued.</p>}
         {activeJobs.length > 0 && <p className="note">{activeJobs.length} unfinished · {activeJobs.reduce((bytes, item) => bytes + item.bytesDownloaded, 0).toLocaleString()} bytes received</p>}
-        {jobs.map(item => <article key={item.id}><div><strong>{item.state.replaceAll('_', ' ')}</strong>
+        {history.map(item => <article key={item.id}><div><strong>{item.state.replaceAll('_', ' ')}</strong>
           <small>{item.id.slice(0, 8)} · {item.bytesDownloaded.toLocaleString()} bytes{item.errorCode ? ' · ' + item.errorCode : ''}</small>
-        </div><div className="job-actions">{([
+          {item.state==='downloading'&&<><progress aria-label="Download progress" max={item.totalBytes??undefined} value={item.totalBytes?item.bytesDownloaded:undefined} />
+            <small>{Math.round(rates[item.id]??0).toLocaleString()} bytes/s{item.totalBytes?' / '+item.totalBytes.toLocaleString()+' total bytes':''}</small></>}
+        </div><div className="job-actions">
+          {item.state==='completed'&&item.purpose!=='probe'&&(['file','folder'] as const).map(action=><button key={action} disabled={busy||!online}
+            onClick={()=>void run(async()=>{
+              await api(connection,'/jobs/'+item.id+'/open',{action});
+              setMessage('Open '+action+' requested on the Windows agent.');
+            })}>Open {action}</button>)}
+          {([
           ...(['queued', 'leased', 'downloading'].includes(item.state) ? ['pause'] : []),
           ...(['paused', 'failed'].includes(item.state) ? ['retry'] : []),
           ...(['queued', 'leased', 'downloading', 'paused'].includes(item.state) ? ['cancel'] : []),
