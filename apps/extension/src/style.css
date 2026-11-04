@@ -1,20 +1,48 @@
-:root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
-body { width: 390px; max-width: 100vw; margin: 0; }
-main { padding: 16px; }
-header, article, .controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-header { border-bottom: 1px solid GrayText; padding-bottom: 10px; }
-h1 { margin: 0; font-size: 22px; }
-h2 { font-size: 16px; }
-form, section { margin: 12px 0; }
-label, input { display: block; }
-input, select { box-sizing: border-box; width: 100%; margin: 4px 0 8px; padding: 5px; font: inherit; }
-.controls label, article div { min-width: 0; flex: 1; }
-button { padding: 6px 10px; cursor: pointer; font: inherit; }
-button:disabled { cursor: default; }
-article { border-bottom: 1px solid GrayText; padding: 8px 0; }
-article strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-small { display: block; overflow-wrap: anywhere; }
-h2 small { display: inline; }
-.online { color: light-dark(#176323, #8bdb8f); }
-.note { font-size: 12px; }
-.message { border-left: 3px solid #ca5a32; padding-left: 8px; overflow-wrap: anywhere; }
+:root {
+  color-scheme: light;
+  font: 14px "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: #193a5c;
+  background: #e8edf4;
+  --surface: #fff;
+  --accent: #126d82;
+  --border: #bdcbd8;
+}
+* { box-sizing: border-box; }
+body { width: 420px; max-width: 100vw; margin: 0; }
+body:has(.panel) { width: auto; min-width: 280px; }
+main { padding: 18px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.8px; }
+h2 { margin: 16px 0 8px; font-size: 18px; font-weight: 650; }
+h2 small { display: inline; margin-left: 8px; font-size: 12px; font-weight: 400; }
+section { margin: 14px 0; }
+label { display: block; }
+input, select { display: block; width: 100%; padding: 8px; margin: 4px 0 10px; border: 1px solid var(--border); border-radius: 4px; color: inherit; background: var(--surface); font: inherit; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid #67bac9; outline-offset: 2px; }
+button { padding: 7px 10px; border: 1px solid var(--accent); border-radius: 4px; color: #fff; background: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .48; cursor: default; }
+.secondary, .filters button, .media-actions button:not(:first-child), .job-actions button { color: var(--accent); background: transparent; }
+.open-panel { margin-top: 12px; }
+.controls { display: flex; align-items: center; gap: 10px; }
+.controls label { flex: 1; min-width: 0; }
+.controls button { flex-shrink: 0; }
+.filters, .selection, .media-actions, .job-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters { margin: 8px 0 12px; }
+.filters button[aria-pressed="true"] { color: #fff; background: var(--accent); }
+.selection { margin-bottom: 10px; }
+article { padding: 10px 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
+article > div { min-width: 0; }
+article strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.media { display: block; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); background: var(--surface); }
+.media label:not(.choice) { margin-top: 10px; font-size: 12px; }
+.media-actions { margin-top: 12px; }
+small { display: block; color: #4c657d; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.choice { display: flex; align-items: center; gap: 8px; margin: 8px 0; line-height: 1.4; }
+.choice input { width: 17px; height: 17px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.media-title { margin-top: 0; }
+.preview { max-width: 100%; max-height: 170px; display: block; object-fit: contain; margin-top: 10px; }
+.online { color: #176323; }
+.note { color: #4c657d; font-size: 12px; line-height: 1.5; }
+.message { color: #80521a; background: #fff8e6; border-left: 3px solid #b87b20; padding: 10px; overflow-wrap: anywhere; }
+form { margin-top: 20px; }
+@media (max-width: 350px) { main { padding: 12px; } .controls { flex-wrap: wrap; } }
