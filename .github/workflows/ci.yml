@@ -103,10 +103,17 @@ jobs:
         run: |
           if ($env:MEDIAHUNTER_TEST_HUB_PID) { Stop-Process -Id $env:MEDIAHUNTER_TEST_HUB_PID -ErrorAction SilentlyContinue }
       - run: go build -trimpath -buildvcs=false -ldflags '-s -w' -o mediahunter-agent.exe ./cmd/mediahunter-agent
+      - name: Include agent distribution licenses
+        run: |
+          Copy-Item ../../LICENSE LICENSE
+          Copy-Item ../../THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
       - uses: actions/upload-artifact@v4
         with:
           name: mediahunter-agent-windows-amd64
-          path: apps/windows-agent/mediahunter-agent.exe
+          path: |
+            apps/windows-agent/mediahunter-agent.exe
+            apps/windows-agent/LICENSE
+            apps/windows-agent/THIRD_PARTY_NOTICES.md
           if-no-files-found: error
 
   package:
@@ -132,7 +139,8 @@ jobs:
           (cd release-artifacts/extension && zip -X -r ../mediahunter-extension.zip .)
           mv release-artifacts/agent/mediahunter-agent.exe release-artifacts/mediahunter-agent-windows-amd64.exe
           rm -rf release-artifacts/extension release-artifacts/agent
-          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -czf release-artifacts/mediahunter-hub-linux-source.tar.gz apps/hub/src apps/hub/package.json apps/extension/package.json packages/contracts package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/install-hub.sh scripts/uninstall-hub.sh scripts/mediahunter-hub.service .env.example LICENSE README.md docs
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -czf release-artifacts/mediahunter-hub-linux-source.tar.gz apps/hub/src apps/hub/package.json apps/extension/package.json packages/contracts package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/install-hub.sh scripts/uninstall-hub.sh scripts/mediahunter-hub.service .env.example LICENSE THIRD_PARTY_NOTICES.md README.md docs
+          cp LICENSE THIRD_PARTY_NOTICES.md release-artifacts/
           node scripts/package-artifacts.mjs release-artifacts
       - uses: actions/upload-artifact@v4
         with:

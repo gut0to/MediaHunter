@@ -2,7 +2,8 @@
 
 MediaHunter's own source is MIT licensed. Installed dependencies and optional
 external tools retain their own licenses. External tool executables are
-supplied by the user and are not bundled in the repository.
+supplied by the user and are not bundled in the repository. The distributed
+extension and Windows executable include [third-party license notices](../THIRD_PARTY_NOTICES.md).
 
 - [Chromium permissions](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions) describes runtime host permission grants.
 - [Chromium webRequest](https://developer.chrome.com/docs/extensions/reference/api/webRequest) defines observational capture and host access restrictions.
