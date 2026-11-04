@@ -1,0 +1,37 @@
+import { z } from 'zod';
+
+export const uuid = z.uuid();
+export const kind = z.enum(['extension', 'windows_agent']);
+export const sourceUrl = z.url({ protocol: /^https?$/ }).max(8192).refine(value => {
+  const url = new URL(value);
+  return !url.username && !url.password && !url.hash;
+});
+export const origin = z.url({ protocol: /^https?$/ }).max(512).refine(value => new URL(value).origin === value);
+export const candidate = z.object({
+  url: sourceUrl,
+  mediaType: z.enum(['image', 'video']),
+  source: z.enum(['dom', 'srcset', 'picture', 'metadata']),
+  format: z.string().regex(/^[a-z0-9]{1,12}$/).nullable(),
+  width: z.number().int().positive().max(100000).nullable(),
+  height: z.number().int().positive().max(100000).nullable(),
+});
+export type Candidate = z.infer<typeof candidate>;
+export const scanInput = z.object({ pageOrigin: origin, candidates: z.array(candidate).max(200) });
+export const claimInput = z.object({ kind, name: z.string().trim().min(1).max(60), code: z.string().regex(/^[0-9a-f]{16}$/) });
+export const pairing = z.object({ id: uuid, token: z.string().regex(/^[0-9a-f]{64}$/) });
+export const jobInput = z.object({ candidateId: uuid, targetAgentId: uuid, idempotencyKey: uuid });
+export const jobState = z.enum(['queued', 'leased', 'downloading', 'completed', 'failed', 'canceled', 'rescan_required']);
+export const failure = z.enum(['DOWNLOAD_FAILED', 'HTTP_ERROR', 'EXPIRED_URL', 'UNSAFE_SOURCE', 'INVALID_MEDIA', 'SIZE_LIMIT', 'DESTINATION_ERROR', 'LEASE_LOST']);
+export const bytes = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+export const job = z.object({ id: uuid, state: jobState, bytesDownloaded: bytes, errorCode: failure.nullable() });
+export const agents = z.array(z.object({ id: uuid, name: z.string(), online: z.boolean() }));
+export const scanResult = z.object({ id: uuid, candidateIds: z.array(uuid) });
+export const lease = z.object({
+  id: uuid,
+  leaseId: uuid,
+  mediaType: candidate.shape.mediaType,
+  url: sourceUrl,
+  destinationProfileId: z.literal('default'),
+});
+export const leaseReport = z.object({ leaseId: uuid, bytesDownloaded: bytes.optional(), errorCode: failure.optional() });
+export const error = z.object({ code: z.string() });
