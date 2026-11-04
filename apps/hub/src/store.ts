@@ -23,7 +23,7 @@ export function openStore(directory: string) {
   db.pragma('busy_timeout = 5000');
   db.transaction(() => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    const migrations = ['./db/001.sql', './db/002.sql', './db/003.sql'];
+    const migrations = ['./db/001.sql', './db/002.sql', './db/003.sql', './db/004.sql'];
     if (version > migrations.length) throw new Error('Database was created by a newer Hub');
     for (const [index, migration] of migrations.entries()) {
       if (index < version) continue;
