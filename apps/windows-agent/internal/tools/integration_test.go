@@ -44,8 +44,8 @@ func TestAdaptiveMediaWithInstalledTools(t *testing.T) {
 			return
 		}
 		clone := request.Clone(request.Context())
-    clone.RequestURI = ""
-    response, err := client.Do(clone)
+		clone.RequestURI = ""
+		response, err := client.Do(clone)
 		if err != nil {
 			http.Error(w, "fixture unavailable", 502)
 			return

@@ -20,3 +20,10 @@ test('observes bounded lazy changes', async () => {
   document.querySelector('#lazy')!.innerHTML = '<img src="https://example.com/lazy.png">';
   expect((await result).candidates.some(item => item.url.endsWith('lazy.png'))).toBe(true);
 });
+
+test('bounds a page with more than 500 images', async () => {
+  document.body.innerHTML=Array.from({length:600},(_,index)=>'<img src="https://example.com/image-'+index+'.png">').join('');
+  const result=await discover();
+  expect(result.candidates).toHaveLength(200);
+  expect(result.warnings).toContain('Scan reached its page or result limit.');
+});
