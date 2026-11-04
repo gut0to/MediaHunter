@@ -13,7 +13,7 @@ jobs:
   node:
     strategy:
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -28,13 +28,13 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - name: Install test Chromium
-        if: matrix.runner == 'ubuntu-latest'
+        if: matrix.runner == 'ubuntu-24.04'
         run: pnpm exec playwright install --with-deps chromium
       - name: Exercise the MV3 extension
-        if: matrix.runner == 'ubuntu-latest'
+        if: matrix.runner == 'ubuntu-24.04'
         run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
-        if: matrix.runner == 'ubuntu-latest'
+        if: matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-extension
           path: apps/extension/dist/
