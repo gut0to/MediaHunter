@@ -146,7 +146,7 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
           input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null, input.destinationProfileId);
-      return job.parse({ id, state: 'queued', bytesDownloaded: 0, errorCode: null, purpose: input.purpose });
+      return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     }).immediate();
   });
 
