@@ -1,0 +1,9 @@
+{
+  "manifest_version":3,
+  "name":"MediaHunter",
+  "version":"0.1.0",
+  "description":"Find direct media on the active page and queue downloads on your Windows agent.",
+  "action":{"default_popup":"index.html"},
+  "permissions":["activeTab","scripting","storage"],
+  "optional_host_permissions":["https://*/*","http://localhost/*","http://127.0.0.1/*"]
+}
