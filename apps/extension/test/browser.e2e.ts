@@ -64,8 +64,9 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
     await popup.getByRole('button', { name: 'Scan page', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByRole('button', { name: 'Scan page', exact: true })).toBeEnabled({ timeout: 15_000 });
-    await expect(popup.getByRole('heading', { name: /Media/ })).toBeVisible();
+    await expect(popup.getByRole('heading', { name: /^Media /, level: 2 })).toBeVisible();
     await expect(popup.locator('article.media')).not.toHaveCount(0);
+    await popup.screenshot({ path: test.info().outputPath('panel.png'), fullPage: true });
     await popup.getByRole('button', { name: 'Capture options' }).evaluate((button: HTMLButtonElement) => button.click());
     popup.on('dialog', dialog => { void dialog.accept(); });
     await popup.getByRole('button', { name: 'Reload and capture' }).evaluate((button: HTMLButtonElement) => button.click());
