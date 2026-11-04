@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.db*
+*.exe
+*.part
+coverage/
+mediahunter-data/
