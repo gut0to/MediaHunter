@@ -44,8 +44,8 @@ func lifecycle(ctx context.Context, args []string, directory, path string, cfg *
 		fmt.Println("Agent build targets Windows amd64.")
 		fmt.Println("Paired:", cfg.ID != "")
 		fmt.Println("Destination profiles:", len(cfg.Profiles))
-		fmt.Println("yt-dlp:", toolVersion(ctx, cfg.Tools.YTDLP))
-		fmt.Println("FFmpeg:", toolVersion(ctx, cfg.Tools.FFmpeg))
+		fmt.Println("yt-dlp:", toolVersion(ctx, cfg.Tools.YTDLP, false))
+		fmt.Println("FFmpeg:", toolVersion(ctx, cfg.Tools.FFmpeg, true))
 		if cfg.Origin != "" && api.ValidOrigin(cfg.Origin) {
 			fmt.Println("Hub:", api.Health(ctx, cfg.Origin))
 		}
@@ -138,14 +138,14 @@ func uninstallAgent(ctx context.Context, directory string, clearCredentials bool
 	return nil
 }
 
-func toolVersion(ctx context.Context, path string) string {
+func toolVersion(ctx context.Context, path string, ffmpeg bool) string {
 	if !filepath.IsAbs(path) {
 		return "not configured"
 	}
 	versionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	args := []string{"--version"}
-	if filepath.Base(path) == "ffmpeg.exe" {
+	if ffmpeg {
 		args = []string{"-version"}
 	}
 	command := exec.CommandContext(versionCtx, path, args...)
