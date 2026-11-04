@@ -48,15 +48,15 @@ test('pair, queue, recover an expired lease across restart, fence old workers an
     const added = await post('/jobs', input, extension.token);
     expect(added.statusCode).toBe(200);
     expect(await post('/jobs', input, extension.token)).toHaveProperty('body', added.body);
-    const first = (await post('/agent/jobs/lease', {}, agent.token)).json<{ id: string; leaseId: string; url: string }>();
+    const first = (await post('/agent/jobs/lease', { profiles: ['default'] }, agent.token)).json<{ id: string; leaseId: string; url: string }>();
     expect(first.url).toBe(url);
-    expect((await post('/agent/jobs/lease', {}, agent.token)).json()).toBeNull();
+    expect((await post('/agent/jobs/lease', { profiles: ['default'] }, agent.token)).json()).toBeNull();
     await app.close();
     store.db.close();
     time += 46_000;
     store = openStore(directory);
     app = await buildApp(store, [], () => time);
-    const next = (await post('/agent/jobs/lease', {}, agent.token)).json<typeof first>();
+    const next = (await post('/agent/jobs/lease', { profiles: ['default'] }, agent.token)).json<typeof first>();
     expect(next.id).toBe(first.id);
     expect(next.leaseId).not.toBe(first.leaseId);
     const action = '/agent/jobs/' + first.id;

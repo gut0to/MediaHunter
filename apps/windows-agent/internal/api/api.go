@@ -38,12 +38,28 @@ type Lease struct {
 	URL                  string
 	MediaType            string
 	DestinationProfileID string
+	Delivery             string
+	Purpose              string
+	RequestedFormat      *string
+}
+
+type Format struct {
+	ID             string   `json:"id"`
+	Width          *int     `json:"width"`
+	Height         *int     `json:"height"`
+	FPS            *float64 `json:"fps"`
+	Bitrate        *float64 `json:"bitrate"`
+	HasAudio       bool     `json:"hasAudio"`
+	HasVideo       bool     `json:"hasVideo"`
+	Format         string   `json:"format"`
+	EstimatedBytes *int64   `json:"estimatedBytes"`
 }
 
 type Report struct {
-	LeaseID         string `json:"leaseId"`
-	BytesDownloaded int64  `json:"bytesDownloaded"`
-	ErrorCode       string `json:"errorCode,omitempty"`
+	Formats         []Format `json:"formats,omitempty"`
+	LeaseID         string   `json:"leaseId"`
+	BytesDownloaded int64    `json:"bytesDownloaded"`
+	ErrorCode       string   `json:"errorCode,omitempty"`
 }
 
 func (c Client) Post(ctx context.Context, path string, input, output any) error {

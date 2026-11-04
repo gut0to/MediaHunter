@@ -13,7 +13,7 @@ jobs:
   node:
     strategy:
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -27,8 +27,20 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Install test Chromium
+        if: matrix.runner == 'ubuntu-24.04'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Exercise the MV3 extension
+        if: matrix.runner == 'ubuntu-24.04'
+        run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
-        if: matrix.runner == 'ubuntu-latest'
+        if: always() && matrix.runner == 'ubuntu-24.04'
+        with:
+          name: mediahunter-browser-results
+          path: test-results/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-extension
           path: apps/extension/dist/
@@ -45,6 +57,18 @@ jobs:
         with:
           go-version: '1.25.x'
           cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install optional integration tools
+        run: |
+          python -m pip install --disable-pip-version-check yt-dlp imageio-ffmpeg
+          $tools = Join-Path $env:RUNNER_TEMP 'mediahunter-test-tools'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          $ffmpeg = python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+          Copy-Item -LiteralPath $ffmpeg -Destination (Join-Path $tools 'ffmpeg.exe')
+          "MEDIAHUNTER_TEST_FFMPEG=$(Join-Path $tools 'ffmpeg.exe')" >> $env:GITHUB_ENV
+          "MEDIAHUNTER_TEST_YTDLP=$((Get-Command yt-dlp).Source)" >> $env:GITHUB_ENV
       - run: go vet ./...
       - run: go test ./...
       - run: go build -trimpath -o mediahunter-agent.exe ./cmd/mediahunter-agent

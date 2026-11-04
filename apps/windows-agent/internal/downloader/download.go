@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -136,7 +138,7 @@ var extensions = map[string]string{
 	"video/x-m4v": ".m4v", "video/ogg": ".ogv",
 }
 
-func Download(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64) (Result, error) {
+func downloadOnce(ctx context.Context, client *http.Client, root *os.Root, id, lease, source, mediaType string, progress *atomic.Int64) (Result, error) {
 	if !ValidID(id) || !ValidID(lease) {
 		return Result{}, Destination
 	}
@@ -155,6 +157,9 @@ func Download(ctx context.Context, client *http.Client, root *os.Root, id, lease
 	defer response.Body.Close()
 	if response.StatusCode == 401 || response.StatusCode == 403 || response.StatusCode == 410 {
 		return Result{}, Expired
+	}
+	if response.StatusCode == 429 || response.StatusCode >= 500 {
+		return Result{}, retryable
 	}
 	if response.StatusCode != 200 {
 		return Result{}, HTTPError
@@ -205,6 +210,34 @@ func Download(ctx context.Context, client *http.Client, root *os.Root, id, lease
 	writer := io.MultiWriter(file, digest, progressWriter{progress})
 	reader := io.MultiReader(bytes.NewReader(prefix[:size]), response.Body)
 	result.Bytes, err = io.Copy(writer, io.LimitReader(reader, MaxBytes+1))
+	if err != nil && ctx.Err() == nil && result.Bytes > 0 && result.Bytes < MaxBytes {
+		validator := response.Header.Get("ETag")
+		if strings.HasPrefix(validator, "W/") {
+			validator = ""
+		}
+		if validator == "" {
+			validator = response.Header.Get("Last-Modified")
+		}
+		if validator != "" && response.ContentLength > result.Bytes {
+			resume, makeErr := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+			if makeErr == nil {
+				resume.Header.Set("Range", "bytes="+strconv.FormatInt(result.Bytes, 10)+"-")
+				resume.Header.Set("If-Range", validator)
+				resume.Header.Set("Accept-Encoding", "identity")
+				continued, requestErr := client.Do(resume)
+				if requestErr == nil {
+					expected := fmt.Sprintf("bytes %d-%d/%d", result.Bytes, response.ContentLength-1, response.ContentLength)
+					if continued.StatusCode == 206 && continued.Header.Get("Content-Range") == expected &&
+						(continued.Header.Get("ETag") == "" || continued.Header.Get("ETag") == response.Header.Get("ETag")) {
+						var copied int64
+						copied, err = io.Copy(writer, io.LimitReader(continued.Body, MaxBytes-result.Bytes+1))
+						result.Bytes += copied
+					}
+					_ = continued.Body.Close()
+				}
+			}
+		}
+	}
 	if err != nil || ctx.Err() != nil {
 		return Result{}, Failed
 	}

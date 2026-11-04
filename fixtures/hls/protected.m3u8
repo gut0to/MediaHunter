@@ -1,0 +1,3 @@
+#EXTM3U
+#EXT-X-KEY:METHOD=AES-128,URI="synthetic-only.key"
+#EXT-X-ENDLIST

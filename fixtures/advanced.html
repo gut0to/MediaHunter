@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Advanced discovery fixture</title></head>
+<body>
+<h1>Advanced discovery fixture</h1>
+<picture><source srcset="sample.png 1x, sample.jpg 2x"><img src="sample.png" alt="Responsive fixture"></picture>
+<div style="width:64px;height:48px;background-image:url(sample.png)">CSS image</div>
+<video src="hls/master.m3u8" poster="sample.jpg" controls></video>
+<a href="dash/manifest.mpd">DASH manifest</a>
+<div id="shadow"></div><div id="lazy"></div>
+<iframe src="index.html" title="Same-origin fixture"></iframe>
+<script>
+document.getElementById('shadow').attachShadow({mode:'open'}).innerHTML='<img src="sample.jpg" alt="Shadow image">';
+setTimeout(() => { document.getElementById('lazy').innerHTML='<img src="sample.png?signature=synthetic" alt="Lazy image">'; }, 800);
+</script>
+</body></html>
