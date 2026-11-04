@@ -5,7 +5,7 @@ downloads to a folder chosen on Windows. The Linux Hub coordinates pairing,
 progress, and history. The Windows agent downloads files directly from the
 media origin.
 
-**Experimental.** Discovery includes active-page DOM, CSS, open shadow roots,
+**Experimental release candidate.** Discovery includes active-page DOM, CSS, open shadow roots,
 performance entries and explicit network capture. Optional Windows yt-dlp and
 FFmpeg support accessible HLS/DASH and extractor formats. Download availability depends on the origin, supported media types, and
 whether the file is accessible without browser credentials. Use it only for
@@ -23,7 +23,8 @@ media you have permission to download.
 
 See the [setup and smoke test](docs/getting-started.md) for commands,
 [architecture](docs/architecture.md) for the API and data flow,
-[formats and limitations](docs/formats-and-limitations.md) for advanced media, and
+[formats and limitations](docs/formats-and-limitations.md) for advanced media,
+[configuration](docs/configuration.md) and [troubleshooting](docs/troubleshooting.md) for operation, and
 [contribution guide](CONTRIBUTING.md) for build and test commands.
 
 There is no telemetry. Pairing tokens are per device, full source URLs expire

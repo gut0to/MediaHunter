@@ -12,6 +12,8 @@ curl --fail http://127.0.0.1:8787/api/v1/health
 sudo journalctl -u mediahunter-hub -n 50
 ```
 
+To remove the Hub while retaining its queue, use `sudo sh scripts/uninstall-hub.sh`.
+
 The service reads `/etc/mediahunter/hub.env` and stores its database and key in
 `/var/lib/mediahunter`. For a foreground development instance, run
 `pnpm install --frozen-lockfile`, then `pnpm --filter @mediahunter/hub start`.
@@ -36,7 +38,7 @@ in place of `pair <kind>`.
 
 ## Windows agent and browser extension
 
-On Windows x64 with Go 1.25, run these commands from the repository root in PowerShell.
+On Windows x64 with Go 1.27.3, run these commands from the repository root in PowerShell.
 
 ```powershell
 Push-Location apps/windows-agent
@@ -103,3 +105,28 @@ On Linux, run `sudo systemctl disable --now mediahunter-hub`, remove
 `/opt/mediahunter` when it is no longer needed. Back up or explicitly remove
 `/etc/mediahunter` and `/var/lib/mediahunter` depending on whether you need
 the configuration and queue. Remove the private HTTPS route you configured.
+
+## CI artifacts and installed agent
+
+Download the release-candidate artifact from a successful GitHub Actions run.
+It contains the Windows executable, unpackable extension ZIP, Hub source
+archive, and SHA256SUMS. Verify every file before use.
+
+On Linux, run `sha256sum -c SHA256SUMS` in the artifact directory.
+On Windows, use `Get-FileHash -Algorithm SHA256` and compare the hexadecimal
+hash to the matching filename in SHA256SUMS.
+
+Run the agent from its downloaded location to install a per-user copy.
+
+```powershell
+.\mediahunter-agent.exe install
+# Optional automatic startup at user login:
+.\mediahunter-agent.exe install --autostart
+```
+
+The optional startup command registers a limited-privilege scheduled task.
+If the Windows account's policy rejects task registration, start the agent
+manually. Configure and pair the installed executable under
+`%LOCALAPPDATA%\MediaHunter\bin`. Run `diagnose` to check connectivity and
+configured tool availability. Stable release tags are published only after
+the hardware smoke procedure has been verified.

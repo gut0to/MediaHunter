@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 24, the pnpm version in the root package manifest, and Go 1.25.
+Use Node.js 24, the pnpm version in the root package manifest, and Go 1.27.3.
 Install dependencies with `pnpm install --frozen-lockfile`. The CI workflow runs
 `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` on Linux. On Windows,
 run `go vet ./...` and `go test ./...` from `apps/windows-agent`.
