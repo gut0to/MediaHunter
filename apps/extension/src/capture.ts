@@ -49,7 +49,7 @@ register();
 chrome.permissions.onAdded.addListener(register);
 chrome.tabs.onRemoved.addListener(tab => { void sequence(() => chrome.storage.session.remove(key(tab))); });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || sender.tab || !Number.isInteger(message?.tab)) return;
+  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL('index.html')) || !Number.isInteger(message?.tab)) return;
   const name = key(message.tab);
   if (message.type === 'capture:start') {
     register();
@@ -67,7 +67,8 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   }
 });
 chrome.runtime.onConnect.addListener(port => {
-  if (port.name !== 'capture-view') return;
+  if (port.name !== 'capture-view' || port.sender?.id !== chrome.runtime.id ||
+    !port.sender.url?.startsWith(chrome.runtime.getURL('index.html'))) return;
   const tabs = new Set<number>();
   port.onMessage.addListener(tab => { if (Number.isInteger(tab)) tabs.add(tab); });
   port.onDisconnect.addListener(() => { void sequence(() => chrome.storage.session.remove([...tabs].map(key))); });

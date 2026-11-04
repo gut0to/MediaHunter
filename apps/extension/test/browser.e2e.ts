@@ -46,7 +46,7 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + (server.address() as AddressInfo).port;
   const context = await chromium.launchPersistentContext(join(directory, 'profile'), {
-    channel: 'chromium', headless: true,
+    channel: 'chromium', headless: true, viewport: { width: 420, height: 900 },
     args: ['--disable-extensions-except=' + extension, '--load-extension=' + extension],
   });
   try {
@@ -70,7 +70,10 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     await popup.getByRole('button', { name: 'Capture options' }).evaluate((button: HTMLButtonElement) => button.click());
     popup.on('dialog', dialog => { void dialog.accept(); });
     await popup.getByRole('button', { name: 'Reload and capture' }).evaluate((button: HTMLButtonElement) => button.click());
-    await expect(popup.getByRole('button', { name: 'Stop scan', exact: true })).toBeVisible();
+    await expect.poll(async () => {
+      if (await popup.getByRole('button', { name: 'Stop scan', exact: true }).isVisible()) return 'capturing';
+      return await popup.getByRole('alert').textContent({ timeout: 200 }).catch(() => 'waiting');
+    }).toBe('capturing');
     await popup.getByRole('button', { name: 'Stop scan', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByText(/Capture includes only requests/)).toBeVisible();
   } finally {
