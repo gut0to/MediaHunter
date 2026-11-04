@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: node scripts/check-docs.mjs
+      - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
@@ -55,7 +57,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version-file: apps/windows-agent/go.mod
           cache: false
       - uses: actions/setup-python@v5
         with:
@@ -69,11 +71,70 @@ jobs:
           Copy-Item -LiteralPath $ffmpeg -Destination (Join-Path $tools 'ffmpeg.exe')
           "MEDIAHUNTER_TEST_FFMPEG=$(Join-Path $tools 'ffmpeg.exe')" >> $env:GITHUB_ENV
           "MEDIAHUNTER_TEST_YTDLP=$((Get-Command yt-dlp).Source)" >> $env:GITHUB_ENV
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install Hub integration dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+      - name: Start the real Hub for Windows integration
+        working-directory: .
+        run: |
+          $env:MEDIAHUNTER_DATA_DIR = Join-Path $env:RUNNER_TEMP 'mediahunter-integration-hub'
+          $env:MEDIAHUNTER_PORT = '38787'
+          $process = Start-Process (Get-Command node).Source -ArgumentList @('apps/hub/src/cli.ts','serve') -WorkingDirectory $env:GITHUB_WORKSPACE -WindowStyle Hidden -PassThru
+          "MEDIAHUNTER_TEST_HUB_PID=$($process.Id)" >> $env:GITHUB_ENV
+          "MEDIAHUNTER_TEST_HUB=http://127.0.0.1:38787" >> $env:GITHUB_ENV
+          for ($attempt=0; $attempt -lt 10; $attempt++) {
+            try { Invoke-RestMethod 'http://127.0.0.1:38787/api/v1/health' | Out-Null; break } catch { Start-Sleep -Seconds 1 }
+          }
+          $extensionCode = node apps/hub/src/cli.ts pair extension
+          $agentCode = node apps/hub/src/cli.ts pair windows_agent
+          Write-Output "::add-mask::$extensionCode"
+          Write-Output "::add-mask::$agentCode"
+          "MEDIAHUNTER_TEST_EXTENSION_CODE=$extensionCode" >> $env:GITHUB_ENV
+          "MEDIAHUNTER_TEST_AGENT_CODE=$agentCode" >> $env:GITHUB_ENV
       - run: go vet ./...
       - run: go test ./...
-      - run: go build -trimpath -o mediahunter-agent.exe ./cmd/mediahunter-agent
+      - name: Stop integration Hub
+        if: always()
+        run: |
+          if ($env:MEDIAHUNTER_TEST_HUB_PID) { Stop-Process -Id $env:MEDIAHUNTER_TEST_HUB_PID -ErrorAction SilentlyContinue }
+      - run: go build -trimpath -buildvcs=false -ldflags '-s -w' -o mediahunter-agent.exe ./cmd/mediahunter-agent
       - uses: actions/upload-artifact@v4
         with:
           name: mediahunter-agent-windows-amd64
           path: apps/windows-agent/mediahunter-agent.exe
+          if-no-files-found: error
+
+  package:
+    needs: [node, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: mediahunter-extension
+          path: release-artifacts/extension
+      - uses: actions/download-artifact@v4
+        with:
+          name: mediahunter-agent-windows-amd64
+          path: release-artifacts/agent
+      - name: Package source and executables
+        run: |
+          epoch=$(git log -1 --format=%ct)
+          find release-artifacts/extension -type f -exec touch -d "@$epoch" {} +
+          (cd release-artifacts/extension && zip -X -r ../mediahunter-extension.zip .)
+          mv release-artifacts/agent/mediahunter-agent.exe release-artifacts/mediahunter-agent-windows-amd64.exe
+          rm -rf release-artifacts/extension release-artifacts/agent
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -czf release-artifacts/mediahunter-hub-linux-source.tar.gz apps/hub/src apps/hub/package.json apps/extension/package.json packages/contracts package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/install-hub.sh scripts/uninstall-hub.sh scripts/mediahunter-hub.service .env.example LICENSE README.md docs
+          node scripts/package-artifacts.mjs release-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediahunter-release-candidate
+          path: release-artifacts/
           if-no-files-found: error
