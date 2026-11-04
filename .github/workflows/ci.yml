@@ -25,6 +25,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: node scripts/check-docs.mjs
+      - run: bash -n scripts/install-hub.sh scripts/uninstall-hub.sh
       - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm test
