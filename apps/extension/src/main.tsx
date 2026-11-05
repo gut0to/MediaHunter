@@ -323,6 +323,9 @@ function Popup() {
       <label>Destination<select value={profile} onChange={event => setDestination(event.target.value)}>
         {profileNames.map(name => <option key={name}>{name}</option>)}
       </select></label>
+      <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
+        onAction={(id, action) => applyQueueAction([id], action)}
+        onBulkAction={applyQueueAction} onExport={exportHistory} onClear={clearHistory} />
       <button className="secondary" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>Capture options</button>
       {advanced && <section>
         <label>Extra media origins<input value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} placeholder="https://media.example.net" /></label>
@@ -378,9 +381,6 @@ function Popup() {
           </article>;
         })}
       </section>}
-      <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
-        onAction={(id, action) => applyQueueAction([id], action)}
-        onBulkAction={applyQueueAction} onExport={exportHistory} onClear={clearHistory} />
       <button disabled={busy} className="secondary" onClick={() => void run(async () => {
         await chrome.storage.local.remove('connection');
         await chrome.storage.session.remove('lastScan');
