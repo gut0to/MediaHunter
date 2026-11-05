@@ -25,6 +25,24 @@ export function queueStateLabel(entry: QueueJob): string {
   }
 }
 
+const errorDescriptions: Record<NonNullable<QueueJob['errorCode']>, string> = {
+  DOWNLOAD_FAILED: 'The source did not finish sending the file.',
+  HTTP_ERROR: 'The media server rejected the request.',
+  EXPIRED_URL: 'The source link expired. Scan the page again.',
+  UNSAFE_SOURCE: 'The source was blocked by the network safety check.',
+  INVALID_MEDIA: 'The response was not a supported media file.',
+  SIZE_LIMIT: 'The file exceeds the agent’s configured size limit.',
+  DESTINATION_ERROR: 'The destination folder could not accept the file.',
+  LEASE_LOST: 'The agent lost its download assignment. Retry the task.',
+  TOOL_UNAVAILABLE: 'The optional media tool is unavailable.',
+  PROTECTED_MEDIA: 'The source appears protected or encrypted.',
+  UNSUPPORTED_FORMAT: 'The selected format is not supported.',
+};
+
+export function queueErrorDescription(code: QueueJob['errorCode']): string | undefined {
+  return code ? errorDescriptions[code] : undefined;
+}
+
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
   if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
