@@ -60,7 +60,7 @@ jobs:
         with:
           go-version-file: apps/windows-agent/go.mod
           cache: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Install optional integration tools
