@@ -36,6 +36,19 @@ article strong { display: block; min-width: 0; overflow: hidden; text-overflow: 
 .media { display: block; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); background: var(--surface); }
 .media label:not(.choice) { margin-top: 10px; font-size: 12px; }
 .media-actions { margin-top: 12px; }
+.queue-filters, .queue-tools, .queue-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 12px; }
+.queue-filters button { display: inline-flex; align-items: center; gap: 7px; }
+.queue-filters button[aria-pressed="true"] { color: #fff; background: var(--accent); }
+.queue-filters span { min-width: 1.4em; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.queue-job { align-items: flex-start; }
+.queue-job > input[type="checkbox"] { width: 17px; height: 17px; padding: 0; margin: 2px 0 0; border: 1px solid var(--border); border-radius: 2px; accent-color: var(--accent); }
+.queue-job-copy { flex: 1; }
+.queue-job-copy progress { width: 100%; height: 8px; margin: 8px 0 2px; accent-color: var(--accent); }
+.queue-job-copy small { font-variant-numeric: tabular-nums; }
+.queue-error { color: #8b2c24; }
+.queue-empty { padding: 8px 0; }
+.queue-tools { justify-content: flex-end; }
+.queue-bulk-actions button { min-height: 34px; }
 small { display: block; color: #4c657d; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .choice { display: flex; align-items: center; gap: 8px; margin: 8px 0; line-height: 1.4; }
 .choice input { width: 17px; height: 17px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
@@ -43,6 +56,6 @@ small { display: block; color: #4c657d; font-size: 12px; line-height: 1.5; overf
 .preview { max-width: 100%; max-height: 170px; display: block; object-fit: contain; margin-top: 10px; }
 .online { color: #176323; }
 .note { color: #4c657d; font-size: 12px; line-height: 1.5; }
-.message { color: #80521a; background: #fff8e6; border-left: 3px solid #b87b20; padding: 10px; overflow-wrap: anywhere; }
+.message { color: #80521a; background: #fff8e6; border: 1px solid #b87b20; border-radius: 4px; padding: 10px; overflow-wrap: anywhere; }
 form { margin-top: 20px; }
 @media (max-width: 350px) { main { padding: 12px; } .controls { flex-wrap: wrap; } }
