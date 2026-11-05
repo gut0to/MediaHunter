@@ -29,7 +29,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         <span>{queueFilterCount(jobs, value)}</span>
       </button>)}
     </div>
-    <label>Search downloads<input type="search" value={query} onChange={event => setQuery(event.target.value)}
+    <label>Search downloads<input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelectedIds([]); }}
       placeholder="Task ID, status, or error" /></label>
     <div className="queue-tools">
       <button className="secondary" disabled={busy} onClick={onExport}>Export JSON</button>
