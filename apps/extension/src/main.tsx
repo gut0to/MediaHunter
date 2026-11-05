@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { agents, candidate, claimInput, error, job, pairing, scanResult, uuid, type Candidate } from '@mediahunter/contracts';
 import { discover } from './discovery';
 import { groupVariants } from './quality';
+import { DownloadsQueue } from './DownloadsQueue';
+import type { QueueAction } from './queue';
 import './style.css';
 
 type Connection = { origin: string; token: string };
@@ -46,7 +48,6 @@ function Popup() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rates,setRates]=useState<Record<string,number>>({});
   const previous=useRef<{time:number;jobs:Job[]}>({time:Date.now(),jobs:[]});
-  const [historyQuery,setHistoryQuery]=useState('');
   const [queued, setQueued] = useState<string[]>([]);
   const [keys] = useState(() => new Map<string, string>());
   const [online, setOnline] = useState(false);
@@ -267,12 +268,40 @@ function Popup() {
     });
   }
 
+  function applyQueueAction(ids: string[], action: QueueAction) {
+    if (!connection || !ids.length) return;
+    void run(async () => {
+      const outcomes = await Promise.allSettled(ids.map(async id => job.parse(await api(connection, `/jobs/${id}/${action}`, {}))));
+      const updates = outcomes.flatMap(outcome => outcome.status === 'fulfilled' ? [outcome.value] : []);
+      if (updates.length) setJobs(current => current.map(entry => updates.find(update => update.id === entry.id) ?? entry));
+      const failed = outcomes.length - updates.length;
+      if (failed) throw new Error(`${failed} of ${outcomes.length} queue actions could not be completed.`);
+      setMessage(ids.length === 1 ? 'Download updated.' : `${ids.length} downloads updated.`);
+    });
+  }
+
+  function exportHistory() {
+    void run(async () => {
+      const data = JSON.stringify(jobs, null, 2);
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+      try {
+        if (!await chrome.permissions.request({ permissions: ['downloads'] })) throw new Error('Download permission was declined.');
+        await chrome.downloads.download({ url, filename: 'mediahunter-history.json', saveAs: true });
+      } finally { setTimeout(() => URL.revokeObjectURL(url), 60_000); }
+    });
+  }
+
+  function clearHistory() {
+    if (!connection) return;
+    void run(async () => {
+      await api(connection, '/jobs', undefined, 'DELETE');
+      setJobs(current => current.filter(entry => ['queued', 'leased', 'downloading', 'paused'].includes(entry.state)));
+    });
+  }
+
   const visible = groupVariants(results.filter(item => filter === 'all' || filter === item.mediaType));
   const chosen = visible.map(group => group.variants.find(item => item.id === variants[group.id]) ?? group.variants[0]);
   const chosenSelected = chosen.filter(item => selected.includes(item.id) && !queued.includes(keyFor(item)));
-  const history=jobs.filter(item=>!historyQuery || (item.id+' '+item.state+' '+(item.errorCode??'')).toLowerCase().includes(historyQuery.toLowerCase()));
-  const activeJobs = jobs.filter(item => item.purpose !== 'probe' && ['queued', 'leased', 'downloading', 'paused'].includes(item.state));
-
   return <main className={panel ? 'panel' : undefined}>
     <header><h1>MediaHunter</h1><span className={online ? 'online' : ''}>{connection ? online ? 'Hub online' : 'Hub offline' : 'Unpaired'}</span></header>
     {!panel && <button className="secondary open-panel" disabled={!activeTab} onClick={() => {
@@ -294,6 +323,9 @@ function Popup() {
       <label>Destination<select value={profile} onChange={event => setDestination(event.target.value)}>
         {profileNames.map(name => <option key={name}>{name}</option>)}
       </select></label>
+      <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
+        onAction={(id, action) => applyQueueAction([id], action)}
+        onBulkAction={applyQueueAction} onExport={exportHistory} onClear={clearHistory} />
       <button className="secondary" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>Capture options</button>
       {advanced && <section>
         <label>Extra media origins<input value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} placeholder="https://media.example.net" /></label>
@@ -349,43 +381,6 @@ function Popup() {
           </article>;
         })}
       </section>}
-      <section aria-label="Downloads"><h2>Downloads</h2>
-        <label>Search history<input type="search" value={historyQuery} onChange={event=>setHistoryQuery(event.target.value)} /></label>
-        <div className="media-actions">
-          <button disabled={busy} onClick={()=>void run(async()=>{
-            const data=JSON.stringify(jobs,null,2);
-            const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
-            try {
-              if (!await chrome.permissions.request({permissions:['downloads']})) throw new Error('Download permission was declined.');
-              await chrome.downloads.download({url,filename:'mediahunter-history.json',saveAs:true});
-            } finally {setTimeout(()=>URL.revokeObjectURL(url),60_000);}
-          })}>Export JSON</button>
-          <button disabled={busy||!online} onClick={()=>void run(async()=>{
-            await api(connection,'/jobs',undefined,'DELETE');
-            setJobs(current=>current.filter(item=>['queued','leased','downloading','paused'].includes(item.state)));
-          })}>Clear finished history</button>
-        </div>
-        {!jobs.length && <p>No downloads queued.</p>}
-        {activeJobs.length > 0 && <p className="note">{activeJobs.length} unfinished · {activeJobs.reduce((bytes, item) => bytes + item.bytesDownloaded, 0).toLocaleString()} bytes received</p>}
-        {history.map(item => <article key={item.id}><div><strong>{item.state.replaceAll('_', ' ')}</strong>
-          <small>{item.id.slice(0, 8)} · {item.bytesDownloaded.toLocaleString()} bytes{item.errorCode ? ' · ' + item.errorCode : ''}</small>
-          {item.state==='downloading'&&<><progress aria-label="Download progress" max={item.totalBytes??undefined} value={item.totalBytes?item.bytesDownloaded:undefined} />
-            <small>{Math.round(rates[item.id]??0).toLocaleString()} bytes/s{item.totalBytes?' / '+item.totalBytes.toLocaleString()+' total bytes':''}</small></>}
-        </div><div className="job-actions">
-          {item.state==='completed'&&item.purpose!=='probe'&&(['file','folder'] as const).map(action=><button key={action} disabled={busy||!online}
-            onClick={()=>void run(async()=>{
-              await api(connection,'/jobs/'+item.id+'/open',{action});
-              setMessage('Open '+action+' requested on the Windows agent.');
-            })}>Open {action}</button>)}
-          {([
-          ...(['queued', 'leased', 'downloading'].includes(item.state) ? ['pause'] : []),
-          ...(['paused', 'failed'].includes(item.state) ? ['retry'] : []),
-          ...(['queued', 'leased', 'downloading', 'paused'].includes(item.state) ? ['cancel'] : []),
-        ]).map(action => <button key={action} disabled={busy || !online} onClick={() => void run(async () => {
-          const updated = job.parse(await api(connection, '/jobs/' + item.id + '/' + action, {}));
-          setJobs(current => current.map(value => value.id === updated.id ? updated : value));
-        })}>{action === 'retry' && item.state === 'paused' ? 'Resume' : action[0].toUpperCase() + action.slice(1)}</button>)}</div></article>)}
-      </section>
       <button disabled={busy} className="secondary" onClick={() => void run(async () => {
         await chrome.storage.local.remove('connection');
         await chrome.storage.session.remove('lastScan');

@@ -62,6 +62,8 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     await fixture.goto(origin);
     await fixture.bringToFront();
     await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
+    await expect(popup.getByText('No active downloads. New jobs will appear here.')).toBeVisible();
+    await expect(popup.getByRole('button', { name: /Active/ })).toBeVisible();
     await popup.getByRole('button', { name: 'Scan page', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByRole('button', { name: 'Scan page', exact: true })).toBeEnabled({ timeout: 15_000 });
     await expect(popup.getByRole('heading', { name: /^Media /, level: 2 })).toBeVisible();
