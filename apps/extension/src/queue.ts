@@ -65,6 +65,10 @@ export function queueFilterCount(jobs: QueueJob[], filter: QueueFilter): number 
   return jobs.filter(entry => matchesQueueFilter(entry, filter)).length;
 }
 
+export function eligibleQueueJobs(jobs: QueueJob[], action: QueueAction): QueueJob[] {
+  return jobs.filter(entry => canApplyQueueAction(entry, action));
+}
+
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
   if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
