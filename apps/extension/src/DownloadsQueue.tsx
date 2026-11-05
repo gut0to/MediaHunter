@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { queueFilterCount, queueFilters, matchesQueueFilter, searchQueueJob, type QueueFilter, type QueueJob } from './queue';
+import { queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueFilter, type QueueJob } from './queue';
 
 type Props = { jobs: QueueJob[] };
 
@@ -23,5 +23,12 @@ export function DownloadsQueue({ jobs }: Props) {
         filter === 'completed' ? 'No completed downloads yet.' : filter === 'attention' ? 'No downloads need attention.' : 'No downloads queued yet.'}</p>
       {query && <button className="secondary" onClick={() => setQuery('')}>Clear search</button>}
     </div>}
+    {visible.map(entry => <article className="queue-job" key={entry.id}>
+      <div className="queue-job-copy">
+        <strong>{queueStateLabel(entry)}</strong>
+        <small>{entry.id.slice(0, 8)} · {entry.bytesDownloaded.toLocaleString()} bytes received</small>
+        {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
+      </div>
+    </article>)}
   </section>;
 }
