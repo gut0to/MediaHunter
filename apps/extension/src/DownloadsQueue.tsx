@@ -18,6 +18,10 @@ export function DownloadsQueue({ jobs }: Props) {
     </div>
     <label>Search downloads<input type="search" value={query} onChange={event => setQuery(event.target.value)}
       placeholder="Task ID, status, or error" /></label>
-    {!visible.length && <p>No downloads in this view.</p>}
+    {!visible.length && <div className="queue-empty" role="status">
+      <p>{query ? 'No downloads match this search.' : filter === 'active' ? 'No active downloads. New jobs will appear here.' :
+        filter === 'completed' ? 'No completed downloads yet.' : filter === 'attention' ? 'No downloads need attention.' : 'No downloads queued yet.'}</p>
+      {query && <button className="secondary" onClick={() => setQuery('')}>Clear search</button>}
+    </div>}
   </section>;
 }
