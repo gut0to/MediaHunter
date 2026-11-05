@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { canApplyQueueAction, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
-  onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void };
+  onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
+  onExport: () => void; onClear: () => void };
 
-export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction }: Props) {
+export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -30,6 +31,10 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
     </div>
     <label>Search downloads<input type="search" value={query} onChange={event => setQuery(event.target.value)}
       placeholder="Task ID, status, or error" /></label>
+    <div className="queue-tools">
+      <button className="secondary" disabled={busy} onClick={onExport}>Export JSON</button>
+      <button className="secondary" disabled={busy || !online} onClick={onClear}>Clear finished history</button>
+    </div>
     {selectable.length > 0 && <div className="queue-bulk-actions">
       <button className="secondary" onClick={() => setSelectedIds(selected.length === selectable.length ? [] : selectable.map(entry => entry.id))}>
         {selected.length === selectable.length ? 'Clear selection' : 'Select actionable'}
