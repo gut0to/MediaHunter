@@ -13,6 +13,11 @@ polls the Hub only while open. Bounded mutation scanning and explicit network ca
 See [formats and limitations](formats-and-limitations.md) for adaptive streams
 and browser-managed downloads.
 
+The download queue separates active work, completed work, and tasks needing
+attention. It supports search, batch pause/resume/retry/cancel, and progress
+with an explicit unknown-size state. History shows job IDs and transfer state;
+it does not retain source URLs.
+
 The Hub uses SQLite WAL and a versioned schema for devices, pairing codes,
 scans, candidates, jobs, and state transition events. It issues independent bearer tokens and stores
 their hashes. Pairing is local and codes expire in 10 minutes. Job ownership
