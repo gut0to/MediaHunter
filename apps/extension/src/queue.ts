@@ -53,6 +53,14 @@ export function matchesQueueFilter(entry: QueueJob, filter: QueueFilter): boolea
   }
 }
 
+export function searchQueueJob(entry: QueueJob, query: string): boolean {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return true;
+  const terms = [entry.id, entry.state, queueStateLabel(entry), entry.errorCode ?? '',
+    queueErrorDescription(entry.errorCode) ?? '', entry.purpose ?? 'download'];
+  return terms.some(term => term.toLocaleLowerCase().includes(normalized));
+}
+
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
   if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
