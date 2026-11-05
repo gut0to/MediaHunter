@@ -56,7 +56,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         <small>{entry.id.slice(0, 8)} · {formatBytes(entry.bytesDownloaded)} received</small>
         {entry.state === 'downloading' && <>
           <progress aria-label={`Progress for task ${entry.id.slice(0, 8)}`} max={entry.totalBytes || undefined}
-            value={progressPercent(entry) === undefined ? undefined : entry.bytesDownloaded} />
+            value={progressPercent(entry) === undefined ? undefined : Math.min(entry.bytesDownloaded, entry.totalBytes!)} />
           <small>{entry.totalBytes ? `${formatBytes(entry.bytesDownloaded)} of ${formatBytes(entry.totalBytes)} · ${progressPercent(entry)}%` :
             `${formatBytes(entry.bytesDownloaded)} received · total size unknown`}</small>
           {rates[entry.id] > 0 && <small>{formatBytes(rates[entry.id])}/s</small>}
