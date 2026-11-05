@@ -61,6 +61,10 @@ export function searchQueueJob(entry: QueueJob, query: string): boolean {
   return terms.some(term => term.toLocaleLowerCase().includes(normalized));
 }
 
+export function queueFilterCount(jobs: QueueJob[], filter: QueueFilter): number {
+  return jobs.filter(entry => matchesQueueFilter(entry, filter)).length;
+}
+
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
   if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
