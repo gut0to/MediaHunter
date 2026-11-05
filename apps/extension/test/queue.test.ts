@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { job } from '@mediahunter/contracts';
-import { canApplyQueueAction, isActiveDownload, queueErrorDescription, queueStateLabel, type QueueJob } from '../src/queue';
+import { canApplyQueueAction, isActiveDownload, matchesQueueFilter, queueErrorDescription, queueStateLabel, searchQueueJob, type QueueJob } from '../src/queue';
 
 function entry(state: QueueJob['state'], purpose: 'download' | 'probe' = 'download', errorCode: QueueJob['errorCode'] = null): QueueJob {
   return job.parse({ id: '00000000-0000-4000-8000-000000000001', state, bytesDownloaded: 0, totalBytes: null, purpose, errorCode });
@@ -22,4 +22,12 @@ test('queue labels translate internal states into useful recovery guidance', () 
   expect(queueStateLabel(entry('rescan_required'))).toBe('Scan again');
   expect(queueStateLabel(entry('completed', 'probe'))).toBe('Formats ready');
   expect(queueErrorDescription('EXPIRED_URL')).toContain('Scan the page again');
+});
+
+test('queue views and search match state, purpose, and failure code', () => {
+  const failed = entry('failed', 'download', 'HTTP_ERROR');
+  expect(matchesQueueFilter(failed, 'attention')).toBe(true);
+  expect(matchesQueueFilter(failed, 'completed')).toBe(false);
+  expect(searchQueueJob(failed, 'http_error')).toBe(true);
+  expect(searchQueueJob(failed, 'format probe')).toBe(false);
 });
