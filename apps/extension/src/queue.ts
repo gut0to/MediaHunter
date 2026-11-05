@@ -3,6 +3,7 @@ import { job } from '@mediahunter/contracts';
 export type QueueJob = ReturnType<typeof job.parse>;
 export type QueueFilter = 'active' | 'completed' | 'attention' | 'all';
 export type QueueAction = 'pause' | 'retry' | 'cancel';
+export const queueFilters: QueueFilter[] = ['active', 'completed', 'attention', 'all'];
 
 const activeStates = new Set<QueueJob['state']>(['queued', 'leased', 'downloading', 'paused']);
 
@@ -41,6 +42,15 @@ const errorDescriptions: Record<NonNullable<QueueJob['errorCode']>, string> = {
 
 export function queueErrorDescription(code: QueueJob['errorCode']): string | undefined {
   return code ? errorDescriptions[code] : undefined;
+}
+
+export function matchesQueueFilter(entry: QueueJob, filter: QueueFilter): boolean {
+  switch (filter) {
+    case 'active': return isActiveDownload(entry);
+    case 'completed': return entry.state === 'completed';
+    case 'attention': return entry.state === 'failed' || entry.state === 'rescan_required';
+    case 'all': return true;
+  }
 }
 
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
