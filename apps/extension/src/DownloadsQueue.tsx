@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApplyQueueAction, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
+import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
@@ -12,7 +12,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
   const visible = jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query));
   const selectable = visible.filter(entry => (['pause', 'retry', 'cancel'] as const).some(action => canApplyQueueAction(entry, action)));
   const selected = selectable.filter(entry => selectedIds.includes(entry.id));
-  const eligible = (action: QueueAction) => selected.filter(entry => canApplyQueueAction(entry, action));
+  const eligible = (action: QueueAction) => eligibleQueueJobs(selected, action);
   const setFilterAndClear = (value: QueueFilter) => { setFilter(value); setSelectedIds([]); };
   const runBulkAction = (action: QueueAction) => {
     const entries = eligible(action);
