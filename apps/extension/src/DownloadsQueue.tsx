@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueFilter, type QueueJob } from './queue';
+import { formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueFilter, type QueueJob } from './queue';
 
-type Props = { jobs: QueueJob[] };
+type Props = { jobs: QueueJob[]; rates?: Record<string, number> };
 
-export function DownloadsQueue({ jobs }: Props) {
+export function DownloadsQueue({ jobs, rates = {} }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
   const [query, setQuery] = useState('');
   const visible = jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query));
@@ -26,7 +26,14 @@ export function DownloadsQueue({ jobs }: Props) {
     {visible.map(entry => <article className="queue-job" key={entry.id}>
       <div className="queue-job-copy">
         <strong>{queueStateLabel(entry)}</strong>
-        <small>{entry.id.slice(0, 8)} · {entry.bytesDownloaded.toLocaleString()} bytes received</small>
+        <small>{entry.id.slice(0, 8)} · {formatBytes(entry.bytesDownloaded)} received</small>
+        {entry.state === 'downloading' && <>
+          <progress aria-label={`Progress for task ${entry.id.slice(0, 8)}`} max={entry.totalBytes || undefined}
+            value={progressPercent(entry) === undefined ? undefined : entry.bytesDownloaded} />
+          <small>{entry.totalBytes ? `${formatBytes(entry.bytesDownloaded)} of ${formatBytes(entry.totalBytes)} · ${progressPercent(entry)}%` :
+            `${formatBytes(entry.bytesDownloaded)} received · total size unknown`}</small>
+          {rates[entry.id] > 0 && <small>{formatBytes(rates[entry.id])}/s</small>}
+        </>}
         {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
       </div>
     </article>)}

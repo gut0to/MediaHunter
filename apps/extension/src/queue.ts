@@ -69,6 +69,20 @@ export function eligibleQueueJobs(jobs: QueueJob[], action: QueueAction): QueueJ
   return jobs.filter(entry => canApplyQueueAction(entry, action));
 }
 
+export function formatBytes(bytes: number): string {
+  const value = Math.max(0, bytes);
+  if (value < 1024) return `${Math.round(value)} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length);
+  const scaled = value / 1024 ** exponent;
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(scaled)} ${units[exponent - 1]}`;
+}
+
+export function progressPercent(entry: QueueJob): number | undefined {
+  if (!entry.totalBytes) return undefined;
+  return Math.min(100, Math.round(entry.bytesDownloaded / entry.totalBytes * 100));
+}
+
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
   if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
