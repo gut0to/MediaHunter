@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { job } from '@mediahunter/contracts';
-import { canApplyQueueAction, isActiveDownload, matchesQueueFilter, queueErrorDescription, queueStateLabel, searchQueueJob, type QueueJob } from '../src/queue';
+import { canApplyQueueAction, formatBytes, isActiveDownload, matchesQueueFilter, progressPercent, queueErrorDescription, queueStateLabel, searchQueueJob, type QueueJob } from '../src/queue';
 
 function entry(state: QueueJob['state'], purpose: 'download' | 'probe' = 'download', errorCode: QueueJob['errorCode'] = null): QueueJob {
   return job.parse({ id: '00000000-0000-4000-8000-000000000001', state, bytesDownloaded: 0, totalBytes: null, purpose, errorCode });
@@ -30,4 +30,11 @@ test('queue views and search match state, purpose, and failure code', () => {
   expect(matchesQueueFilter(failed, 'completed')).toBe(false);
   expect(searchQueueJob(failed, 'http_error')).toBe(true);
   expect(searchQueueJob(failed, 'format probe')).toBe(false);
+});
+
+test('progress stays indeterminate when the Hub has no total size', () => {
+  expect(progressPercent(entry('downloading'))).toBeUndefined();
+  expect(progressPercent(job.parse({ id: '00000000-0000-4000-8000-000000000001', state: 'downloading',
+    bytesDownloaded: 512, totalBytes: 1024, errorCode: null }))).toBe(50);
+  expect(formatBytes(1024)).toBe('1 KB');
 });
