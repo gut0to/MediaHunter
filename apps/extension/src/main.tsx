@@ -98,9 +98,22 @@ function Popup() {
   }, []);
 
   useEffect(() => {
-    void chrome.storage.local.get('connection').then(value => {
-      if (value.connection) setConnection(value.connection as Connection);
-    }).catch(() => setMessage('Could not load pairing.'));
+    void chrome.storage.local.get(['connection', 'extensionPreferences']).then(value => {
+      const saved = parseExtensionPreferences(value.extensionPreferences);
+      const storedConnection = value.connection as Connection | undefined;
+      setSavedPreferences(saved);
+      if (storedConnection) {
+        setConnection(storedConnection);
+        if (saved?.hubOrigin === storedConnection.origin) {
+          setTarget(saved.targetAgentId);
+          setDestination(saved.destinationProfileId);
+        }
+      }
+      setPreferencesReady(true);
+    }).catch(() => {
+      setMessage('Could not load pairing and preferences.');
+      setPreferencesReady(true);
+    });
   }, []);
 
   useEffect(() => {
