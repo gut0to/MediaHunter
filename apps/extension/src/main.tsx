@@ -85,7 +85,7 @@ function Popup() {
     if (!preferencesReady || !connection || !devicesLoaded) return;
     const next = { hubOrigin: connection.origin, targetAgentId: target, destinationProfileId: profile };
     const updated = preferencesWithHub(savedPreferences, next);
-    setSavedPreferences(updated);
+    if (JSON.stringify(updated) !== JSON.stringify(savedPreferences)) setSavedPreferences(updated);
     void chrome.storage.local.set({ extensionPreferences: updated }).catch(() => {
       setMessage('Could not save the selected agent and destination.');
     });
