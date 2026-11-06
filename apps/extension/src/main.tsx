@@ -75,6 +75,13 @@ function Popup() {
   const profile = profileNames.includes(destination) ? destination : profileNames[0] ?? 'default';
 
   useEffect(() => {
+    const selectedAgent = devices.find(agent => agent.id === target);
+    if (!selectedAgent) return;
+    const validProfile = selectedAgent.profiles.includes(destination) ? destination : selectedAgent.profiles[0] ?? 'default';
+    if (validProfile !== destination) setDestination(validProfile);
+  }, [devices, destination, target]);
+
+  useEffect(() => {
     if (!preferencesReady || !connection || !devicesLoaded) return;
     const next = { hubOrigin: connection.origin, targetAgentId: target, destinationProfileId: profile };
     setSavedPreferences(next);
