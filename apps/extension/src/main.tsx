@@ -164,7 +164,7 @@ function Popup() {
     }
     void refresh();
     return () => { closed = true; clearTimeout(timer); };
-  }, [connection]);
+  }, [connection, preferencesReady]);
 
   async function run(operation: () => Promise<void>) {
     setBusy(true);
