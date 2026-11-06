@@ -6,6 +6,9 @@ import { resolve, join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
+const savedAgentId = '0a207c3c-9d3b-4206-8a79-e22a37b16ab5';
+type StoredPreferences = Record<string, { destinationProfileId: string }>;
+
 test('MV3 popup discovers DOM variants and captures only its authorized fixture tab', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mediahunter-browser-'));
   const extension = join(directory, 'extension');
@@ -24,7 +27,10 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     const path = new URL(request.url!, 'http://fixture').pathname;
     response.setHeader('Content-Type', 'application/json');
     if (path === '/api/v1/devices') {
-      response.end(JSON.stringify([{ id: 'aeb82f75-38e3-4bcf-bf1a-54ad41d9a268', name: 'Fixture agent', online: true, profiles: ['default'] }]));
+      response.end(JSON.stringify([
+        { id: 'aeb82f75-38e3-4bcf-bf1a-54ad41d9a268', name: 'Fixture agent', online: true, profiles: ['default'] },
+        { id: savedAgentId, name: 'Saved fixture agent', online: true, profiles: ['default', 'archive'] },
+      ]));
     } else if (path === '/api/v1/jobs') {
       response.end('[]');
     } else if (path === '/api/v1/scans') {
@@ -55,15 +61,34 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     const fixture = await context.newPage();
     const popup = await context.newPage();
     await popup.goto('chrome-extension://' + id + '/index.html?panel=1');
-    await popup.evaluate(async connection => {
-      await chrome.storage.local.set({ connection });
-    }, { origin, token: 'a'.repeat(64) });
+    await popup.evaluate(async values => {
+      await chrome.storage.local.set(values);
+    }, {
+      connection: { origin, token: 'a'.repeat(64) },
+      extensionPreferences: {
+        [origin]: { hubOrigin: origin, targetAgentId: savedAgentId, destinationProfileId: 'archive' },
+        'https://other.example.net': {
+          hubOrigin: 'https://other.example.net', targetAgentId: '', destinationProfileId: 'default',
+        },
+      },
+    });
     await popup.reload();
     await fixture.goto(origin);
     await fixture.bringToFront();
     await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
+    await expect(popup.getByLabel('Windows agent')).toHaveValue(savedAgentId);
+    await expect(popup.getByLabel('Destination')).toHaveValue('archive');
     await expect(popup.getByText('No active downloads. New jobs will appear here.')).toBeVisible();
     await expect(popup.getByRole('button', { name: /Active/ })).toBeVisible();
+    await popup.getByLabel('Destination').selectOption('default');
+    await expect.poll(async () => popup.evaluate(async hubOrigin =>
+      ((await chrome.storage.local.get('extensionPreferences')).extensionPreferences as StoredPreferences)[hubOrigin]?.destinationProfileId, origin)).toBe('default');
+    await popup.reload();
+    await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
+    await expect(popup.getByLabel('Windows agent')).toHaveValue(savedAgentId);
+    await expect(popup.getByLabel('Destination')).toHaveValue('default');
+    expect(await popup.evaluate(async () =>
+      ((await chrome.storage.local.get('extensionPreferences')).extensionPreferences as StoredPreferences)['https://other.example.net']?.destinationProfileId)).toBe('default');
     await popup.getByRole('button', { name: 'Scan page', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByRole('button', { name: 'Scan page', exact: true })).toBeEnabled({ timeout: 15_000 });
     await expect(popup.getByRole('heading', { name: /^Media /, level: 2 })).toBeVisible();

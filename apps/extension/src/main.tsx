@@ -5,6 +5,7 @@ import { discover } from './discovery';
 import { groupVariants } from './quality';
 import { DownloadsQueue } from './DownloadsQueue';
 import type { QueueAction } from './queue';
+import { parseExtensionPreferences, preferencesForHub, preferencesWithHub, type ExtensionPreferenceStore } from './preferences';
 import './style.css';
 
 type Connection = { origin: string; token: string };
@@ -39,6 +40,9 @@ async function api(connection: Connection, path: string, body?: unknown, method?
 
 function Popup() {
   const [connection, setConnection] = useState<Connection>();
+  const [savedPreferences, setSavedPreferences] = useState<ExtensionPreferenceStore>({});
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<chrome.tabs.Tab>();
   const [origin, setOrigin] = useState('');
   const [code, setCode] = useState('');
@@ -71,6 +75,23 @@ function Popup() {
   const profile = profileNames.includes(destination) ? destination : profileNames[0] ?? 'default';
 
   useEffect(() => {
+    const selectedAgent = devices.find(agent => agent.id === target);
+    if (!selectedAgent) return;
+    const validProfile = selectedAgent.profiles.includes(destination) ? destination : selectedAgent.profiles[0] ?? 'default';
+    if (validProfile !== destination) setDestination(validProfile);
+  }, [devices, destination, target]);
+
+  useEffect(() => {
+    if (!preferencesReady || !connection || !devicesLoaded) return;
+    const next = { hubOrigin: connection.origin, targetAgentId: target, destinationProfileId: profile };
+    const updated = preferencesWithHub(savedPreferences, next);
+    if (JSON.stringify(updated) !== JSON.stringify(savedPreferences)) setSavedPreferences(updated);
+    void chrome.storage.local.set({ extensionPreferences: updated }).catch(() => {
+      setMessage('Could not save the selected agent and destination.');
+    });
+  }, [connection, devicesLoaded, preferencesReady, profile, savedPreferences, target]);
+
+  useEffect(() => {
     void chrome.storage.session.get('lastScan').then(value => {
       const saved = value.lastScan as { results?: unknown; warnings?: unknown; expires?: number } | undefined;
       const parsed = candidate.extend({ id: uuid }).array().max(200).safeParse(saved?.results);
@@ -94,13 +115,27 @@ function Popup() {
   }, []);
 
   useEffect(() => {
-    void chrome.storage.local.get('connection').then(value => {
-      if (value.connection) setConnection(value.connection as Connection);
-    }).catch(() => setMessage('Could not load pairing.'));
+    void chrome.storage.local.get(['connection', 'extensionPreferences']).then(value => {
+      const saved = parseExtensionPreferences(value.extensionPreferences);
+      const storedConnection = value.connection as Connection | undefined;
+      setSavedPreferences(saved);
+      if (storedConnection) {
+        setConnection(storedConnection);
+        const matchingPreferences = preferencesForHub(saved, storedConnection.origin);
+        if (matchingPreferences) {
+          setTarget(matchingPreferences.targetAgentId);
+          setDestination(matchingPreferences.destinationProfileId);
+        }
+      }
+      setPreferencesReady(true);
+    }).catch(() => {
+      setMessage('Could not load pairing and preferences.');
+      setPreferencesReady(true);
+    });
   }, []);
 
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !preferencesReady) return;
     let closed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -110,6 +145,7 @@ function Popup() {
         if (closed) return;
         setOnline(true);
         setDevices(nextDevices);
+        setDevicesLoaded(true);
         setTarget(value => nextDevices.some(agent => agent.id === value) ? value : nextDevices[0]?.id ?? '');
         const nextJobs=job.array().parse(jobResponse);
         const time=Date.now();
@@ -128,7 +164,7 @@ function Popup() {
     }
     void refresh();
     return () => { closed = true; clearTimeout(timer); };
-  }, [connection]);
+  }, [connection, preferencesReady]);
 
   async function run(operation: () => Promise<void>) {
     setBusy(true);
@@ -149,6 +185,16 @@ function Popup() {
       const next = { origin: url.origin, token: result.token };
       await chrome.storage.local.set({ connection: next });
       setConnection(next);
+      setDevices([]);
+      setDevicesLoaded(false);
+      const matchingPreferences = preferencesForHub(savedPreferences, next.origin);
+      if (matchingPreferences) {
+        setTarget(matchingPreferences.targetAgentId);
+        setDestination(matchingPreferences.destinationProfileId);
+      } else {
+        setTarget('');
+        setDestination('default');
+      }
       setCode('');
     });
   }
@@ -310,7 +356,7 @@ function Popup() {
     {!connection ? <form onSubmit={pair}>
       <label>Hub origin<input type="url" required value={origin} onChange={event => setOrigin(event.target.value)} placeholder="https://hub.example.net" /></label>
       <label>Pairing code<input required pattern="[0-9a-f]{16}" autoComplete="off" value={code} onChange={event => setCode(event.target.value)} /></label>
-      <button disabled={busy}>Pair extension</button>
+      <button disabled={busy || !preferencesReady}>Pair extension</button>
     </form> : <>
       <section className="controls">
         <label>Windows agent<select value={target} onChange={event => setTarget(event.target.value)}>
