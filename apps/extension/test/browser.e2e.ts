@@ -64,7 +64,12 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
       await chrome.storage.local.set(values);
     }, {
       connection: { origin, token: 'a'.repeat(64) },
-      extensionPreferences: { hubOrigin: origin, targetAgentId: savedAgentId, destinationProfileId: 'archive' },
+      extensionPreferences: {
+        [origin]: { hubOrigin: origin, targetAgentId: savedAgentId, destinationProfileId: 'archive' },
+        'https://other.example.net': {
+          hubOrigin: 'https://other.example.net', targetAgentId: '', destinationProfileId: 'default',
+        },
+      },
     });
     await popup.reload();
     await fixture.goto(origin);
@@ -75,12 +80,14 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     await expect(popup.getByText('No active downloads. New jobs will appear here.')).toBeVisible();
     await expect(popup.getByRole('button', { name: /Active/ })).toBeVisible();
     await popup.getByLabel('Destination').selectOption('default');
-    await expect.poll(async () => popup.evaluate(async () =>
-      (await chrome.storage.local.get('extensionPreferences')).extensionPreferences.destinationProfileId)).toBe('default');
+    await expect.poll(async () => popup.evaluate(async hubOrigin =>
+      (await chrome.storage.local.get('extensionPreferences')).extensionPreferences[hubOrigin].destinationProfileId, origin)).toBe('default');
     await popup.reload();
     await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
     await expect(popup.getByLabel('Windows agent')).toHaveValue(savedAgentId);
     await expect(popup.getByLabel('Destination')).toHaveValue('default');
+    expect(await popup.evaluate(async () =>
+      (await chrome.storage.local.get('extensionPreferences')).extensionPreferences['https://other.example.net'].destinationProfileId)).toBe('default');
     await popup.getByRole('button', { name: 'Scan page', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByRole('button', { name: 'Scan page', exact: true })).toBeEnabled({ timeout: 15_000 });
     await expect(popup.getByRole('heading', { name: /^Media /, level: 2 })).toBeVisible();
