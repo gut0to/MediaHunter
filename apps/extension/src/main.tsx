@@ -183,6 +183,15 @@ function Popup() {
       const next = { origin: url.origin, token: result.token };
       await chrome.storage.local.set({ connection: next });
       setConnection(next);
+      setDevices([]);
+      setDevicesLoaded(false);
+      if (savedPreferences?.hubOrigin === next.origin) {
+        setTarget(savedPreferences.targetAgentId);
+        setDestination(savedPreferences.destinationProfileId);
+      } else {
+        setTarget('');
+        setDestination('default');
+      }
       setCode('');
     });
   }
