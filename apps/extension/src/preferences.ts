@@ -19,3 +19,8 @@ export function parseExtensionPreferences(value: unknown): ExtensionPreferences 
     destinationProfileId: record.destinationProfileId as string,
   };
 }
+
+export function preferencesForHub(value: unknown, hubOrigin: string): ExtensionPreferences | undefined {
+  const preferences = parseExtensionPreferences(value);
+  return preferences?.hubOrigin === hubOrigin ? preferences : undefined;
+}

@@ -5,7 +5,7 @@ import { discover } from './discovery';
 import { groupVariants } from './quality';
 import { DownloadsQueue } from './DownloadsQueue';
 import type { QueueAction } from './queue';
-import { parseExtensionPreferences, type ExtensionPreferences } from './preferences';
+import { parseExtensionPreferences, preferencesForHub, type ExtensionPreferences } from './preferences';
 import './style.css';
 
 type Connection = { origin: string; token: string };
@@ -120,9 +120,10 @@ function Popup() {
       setSavedPreferences(saved);
       if (storedConnection) {
         setConnection(storedConnection);
-        if (saved?.hubOrigin === storedConnection.origin) {
-          setTarget(saved.targetAgentId);
-          setDestination(saved.destinationProfileId);
+        const matchingPreferences = preferencesForHub(saved, storedConnection.origin);
+        if (matchingPreferences) {
+          setTarget(matchingPreferences.targetAgentId);
+          setDestination(matchingPreferences.destinationProfileId);
         }
       }
       setPreferencesReady(true);
@@ -185,9 +186,10 @@ function Popup() {
       setConnection(next);
       setDevices([]);
       setDevicesLoaded(false);
-      if (savedPreferences?.hubOrigin === next.origin) {
-        setTarget(savedPreferences.targetAgentId);
-        setDestination(savedPreferences.destinationProfileId);
+      const matchingPreferences = preferencesForHub(savedPreferences, next.origin);
+      if (matchingPreferences) {
+        setTarget(matchingPreferences.targetAgentId);
+        setDestination(matchingPreferences.destinationProfileId);
       } else {
         setTarget('');
         setDestination('default');
