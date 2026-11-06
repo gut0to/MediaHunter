@@ -6,7 +6,9 @@ export type ExtensionPreferences = {
   destinationProfileId: string;
 };
 
-export function parseExtensionPreferences(value: unknown): ExtensionPreferences | undefined {
+export type ExtensionPreferenceStore = Record<string, ExtensionPreferences>;
+
+function parsePreference(value: unknown): ExtensionPreferences | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   if (!origin.safeParse(record.hubOrigin).success) return undefined;
@@ -20,7 +22,23 @@ export function parseExtensionPreferences(value: unknown): ExtensionPreferences 
   };
 }
 
+export function parseExtensionPreferences(value: unknown): ExtensionPreferenceStore {
+  const legacy = parsePreference(value);
+  if (legacy) return { [legacy.hubOrigin]: legacy };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const preferences: ExtensionPreferenceStore = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!origin.safeParse(key).success) continue;
+    const parsed = parsePreference(item);
+    if (parsed?.hubOrigin === key) preferences[key] = parsed;
+  }
+  return preferences;
+}
+
 export function preferencesForHub(value: unknown, hubOrigin: string): ExtensionPreferences | undefined {
-  const preferences = parseExtensionPreferences(value);
-  return preferences?.hubOrigin === hubOrigin ? preferences : undefined;
+  return parseExtensionPreferences(value)[hubOrigin];
+}
+
+export function preferencesWithHub(value: unknown, preferences: ExtensionPreferences): ExtensionPreferenceStore {
+  return { ...parseExtensionPreferences(value), [preferences.hubOrigin]: preferences };
 }
