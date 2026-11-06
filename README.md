@@ -21,7 +21,7 @@ media you have permission to download.
    host, choose **Scan page**, and download the PNG and MP4. Compare SHA-256
    hashes on Windows.
 
-See the [setup and smoke test](docs/getting-started.md) for commands,
+See the [setup and smoke test](docs/getting-started.md) for commands, the [installation guide in Portuguese](docs/instalacao.md),
 [architecture](docs/architecture.md) for the API and data flow,
 [formats and limitations](docs/formats-and-limitations.md) for advanced media,
 [configuration](docs/configuration.md) and [troubleshooting](docs/troubleshooting.md) for operation, and
