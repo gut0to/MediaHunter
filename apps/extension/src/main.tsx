@@ -5,6 +5,7 @@ import { discover } from './discovery';
 import { groupVariants } from './quality';
 import { DownloadsQueue } from './DownloadsQueue';
 import type { QueueAction } from './queue';
+import { parseExtensionPreferences, type ExtensionPreferences } from './preferences';
 import './style.css';
 
 type Connection = { origin: string; token: string };
@@ -39,6 +40,9 @@ async function api(connection: Connection, path: string, body?: unknown, method?
 
 function Popup() {
   const [connection, setConnection] = useState<Connection>();
+  const [savedPreferences, setSavedPreferences] = useState<ExtensionPreferences>();
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<chrome.tabs.Tab>();
   const [origin, setOrigin] = useState('');
   const [code, setCode] = useState('');
