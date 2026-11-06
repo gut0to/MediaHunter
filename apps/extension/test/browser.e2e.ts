@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
 const savedAgentId = '0a207c3c-9d3b-4206-8a79-e22a37b16ab5';
+type StoredPreferences = Record<string, { destinationProfileId: string }>;
 
 test('MV3 popup discovers DOM variants and captures only its authorized fixture tab', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mediahunter-browser-'));
@@ -81,13 +82,13 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     await expect(popup.getByRole('button', { name: /Active/ })).toBeVisible();
     await popup.getByLabel('Destination').selectOption('default');
     await expect.poll(async () => popup.evaluate(async hubOrigin =>
-      (await chrome.storage.local.get('extensionPreferences')).extensionPreferences[hubOrigin].destinationProfileId, origin)).toBe('default');
+      ((await chrome.storage.local.get('extensionPreferences')).extensionPreferences as StoredPreferences)[hubOrigin]?.destinationProfileId, origin)).toBe('default');
     await popup.reload();
     await expect(popup.getByText('Hub online', { exact: true })).toBeVisible();
     await expect(popup.getByLabel('Windows agent')).toHaveValue(savedAgentId);
     await expect(popup.getByLabel('Destination')).toHaveValue('default');
     expect(await popup.evaluate(async () =>
-      (await chrome.storage.local.get('extensionPreferences')).extensionPreferences['https://other.example.net'].destinationProfileId)).toBe('default');
+      ((await chrome.storage.local.get('extensionPreferences')).extensionPreferences as StoredPreferences)['https://other.example.net']?.destinationProfileId)).toBe('default');
     await popup.getByRole('button', { name: 'Scan page', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await expect(popup.getByRole('button', { name: 'Scan page', exact: true })).toBeEnabled({ timeout: 15_000 });
     await expect(popup.getByRole('heading', { name: /^Media /, level: 2 })).toBeVisible();
