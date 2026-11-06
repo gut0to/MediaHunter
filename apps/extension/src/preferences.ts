@@ -8,10 +8,16 @@ export type ExtensionPreferences = {
 
 export type ExtensionPreferenceStore = Record<string, ExtensionPreferences>;
 
+function isOrigin(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try { return origin.safeParse(value).success; }
+  catch { return false; }
+}
+
 function parsePreference(value: unknown): ExtensionPreferences | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
-  if (!origin.safeParse(record.hubOrigin).success) return undefined;
+  if (!isOrigin(record.hubOrigin)) return undefined;
   if (typeof record.targetAgentId !== 'string' ||
     (record.targetAgentId !== '' && !uuid.safeParse(record.targetAgentId).success)) return undefined;
   if (!profileId.safeParse(record.destinationProfileId).success) return undefined;
@@ -28,7 +34,7 @@ export function parseExtensionPreferences(value: unknown): ExtensionPreferenceSt
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const preferences: ExtensionPreferenceStore = {};
   for (const [key, item] of Object.entries(value)) {
-    if (!origin.safeParse(key).success) continue;
+    if (!isOrigin(key)) continue;
     const parsed = parsePreference(item);
     if (parsed?.hubOrigin === key) preferences[key] = parsed;
   }
