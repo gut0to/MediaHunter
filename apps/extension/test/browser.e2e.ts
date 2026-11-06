@@ -6,6 +6,8 @@ import { resolve, join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
+const savedAgentId = '0a207c3c-9d3b-4206-8a79-e22a37b16ab5';
+
 test('MV3 popup discovers DOM variants and captures only its authorized fixture tab', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mediahunter-browser-'));
   const extension = join(directory, 'extension');
@@ -24,7 +26,10 @@ test('MV3 popup discovers DOM variants and captures only its authorized fixture 
     const path = new URL(request.url!, 'http://fixture').pathname;
     response.setHeader('Content-Type', 'application/json');
     if (path === '/api/v1/devices') {
-      response.end(JSON.stringify([{ id: 'aeb82f75-38e3-4bcf-bf1a-54ad41d9a268', name: 'Fixture agent', online: true, profiles: ['default'] }]));
+      response.end(JSON.stringify([
+        { id: 'aeb82f75-38e3-4bcf-bf1a-54ad41d9a268', name: 'Fixture agent', online: true, profiles: ['default'] },
+        { id: savedAgentId, name: 'Saved fixture agent', online: true, profiles: ['default', 'archive'] },
+      ]));
     } else if (path === '/api/v1/jobs') {
       response.end('[]');
     } else if (path === '/api/v1/scans') {
