@@ -117,7 +117,7 @@ function Popup() {
   }, []);
 
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !preferencesReady) return;
     let closed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
