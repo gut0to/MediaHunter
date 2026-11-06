@@ -75,6 +75,15 @@ function Popup() {
   const profile = profileNames.includes(destination) ? destination : profileNames[0] ?? 'default';
 
   useEffect(() => {
+    if (!preferencesReady || !connection || !devicesLoaded) return;
+    const next = { hubOrigin: connection.origin, targetAgentId: target, destinationProfileId: profile };
+    setSavedPreferences(next);
+    void chrome.storage.local.set({ extensionPreferences: next }).catch(() => {
+      setMessage('Could not save the selected agent and destination.');
+    });
+  }, [connection, devicesLoaded, preferencesReady, profile, target]);
+
+  useEffect(() => {
     void chrome.storage.session.get('lastScan').then(value => {
       const saved = value.lastScan as { results?: unknown; warnings?: unknown; expires?: number } | undefined;
       const parsed = candidate.extend({ id: uuid }).array().max(200).safeParse(saved?.results);
