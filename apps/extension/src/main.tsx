@@ -353,7 +353,7 @@ function Popup() {
     {!connection ? <form onSubmit={pair}>
       <label>Hub origin<input type="url" required value={origin} onChange={event => setOrigin(event.target.value)} placeholder="https://hub.example.net" /></label>
       <label>Pairing code<input required pattern="[0-9a-f]{16}" autoComplete="off" value={code} onChange={event => setCode(event.target.value)} /></label>
-      <button disabled={busy}>Pair extension</button>
+      <button disabled={busy || !preferencesReady}>Pair extension</button>
     </form> : <>
       <section className="controls">
         <label>Windows agent<select value={target} onChange={event => setTarget(event.target.value)}>
