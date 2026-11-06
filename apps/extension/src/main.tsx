@@ -127,6 +127,7 @@ function Popup() {
         if (closed) return;
         setOnline(true);
         setDevices(nextDevices);
+        setDevicesLoaded(true);
         setTarget(value => nextDevices.some(agent => agent.id === value) ? value : nextDevices[0]?.id ?? '');
         const nextJobs=job.array().parse(jobResponse);
         const time=Date.now();
