@@ -5,7 +5,7 @@ import { discover } from './discovery';
 import { groupVariants } from './quality';
 import { DownloadsQueue } from './DownloadsQueue';
 import type { QueueAction } from './queue';
-import { parseExtensionPreferences, preferencesForHub, type ExtensionPreferences } from './preferences';
+import { parseExtensionPreferences, preferencesForHub, preferencesWithHub, type ExtensionPreferenceStore } from './preferences';
 import './style.css';
 
 type Connection = { origin: string; token: string };
@@ -40,7 +40,7 @@ async function api(connection: Connection, path: string, body?: unknown, method?
 
 function Popup() {
   const [connection, setConnection] = useState<Connection>();
-  const [savedPreferences, setSavedPreferences] = useState<ExtensionPreferences>();
+  const [savedPreferences, setSavedPreferences] = useState<ExtensionPreferenceStore>({});
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<chrome.tabs.Tab>();
@@ -84,11 +84,12 @@ function Popup() {
   useEffect(() => {
     if (!preferencesReady || !connection || !devicesLoaded) return;
     const next = { hubOrigin: connection.origin, targetAgentId: target, destinationProfileId: profile };
-    setSavedPreferences(next);
-    void chrome.storage.local.set({ extensionPreferences: next }).catch(() => {
+    const updated = preferencesWithHub(savedPreferences, next);
+    setSavedPreferences(updated);
+    void chrome.storage.local.set({ extensionPreferences: updated }).catch(() => {
       setMessage('Could not save the selected agent and destination.');
     });
-  }, [connection, devicesLoaded, preferencesReady, profile, target]);
+  }, [connection, devicesLoaded, preferencesReady, profile, savedPreferences, target]);
 
   useEffect(() => {
     void chrome.storage.session.get('lastScan').then(value => {
