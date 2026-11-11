@@ -36,13 +36,13 @@ jobs:
       - name: Exercise the MV3 extension
         if: matrix.runner == 'ubuntu-24.04'
         run: pnpm exec playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-browser-results
           path: test-results/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-extension
@@ -107,7 +107,7 @@ jobs:
         run: |
           Copy-Item ../../LICENSE LICENSE
           Copy-Item ../../THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mediahunter-agent-windows-amd64
           path: |
@@ -143,7 +143,7 @@ jobs:
           tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -czf release-artifacts/mediahunter-hub-linux-source.tar.gz apps/hub/src apps/hub/package.json apps/extension/package.json packages/contracts package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/install-hub.sh scripts/uninstall-hub.sh scripts/mediahunter-hub.service .env.example LICENSE THIRD_PARTY_NOTICES.md README.md docs
           cp LICENSE THIRD_PARTY_NOTICES.md release-artifacts/
           node scripts/package-artifacts.mjs release-artifacts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mediahunter-release-candidate
           path: release-artifacts/
