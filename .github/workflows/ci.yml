@@ -17,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -72,7 +72,7 @@ jobs:
           Copy-Item -LiteralPath $ffmpeg -Destination (Join-Path $tools 'ffmpeg.exe')
           "MEDIAHUNTER_TEST_FFMPEG=$(Join-Path $tools 'ffmpeg.exe')" >> $env:GITHUB_ENV
           "MEDIAHUNTER_TEST_YTDLP=$((Get-Command yt-dlp).Source)" >> $env:GITHUB_ENV
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
