@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queueStateLabel, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
+import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queuePriorityLabel, queueStateLabel, retryCountdown, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
@@ -53,7 +53,8 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         checked={selectedIds.includes(entry.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, entry.id] : current.filter(id => id !== entry.id))} />}
       <div className="queue-job-copy">
         <strong>{queueStateLabel(entry)}</strong>
-        <small>{entry.id.slice(0, 8)} · {formatBytes(entry.bytesDownloaded)} received</small>
+        <small>{entry.id.slice(0, 8)} · {queuePriorityLabel(entry.priority)}{entry.attempts > 0 ? ` · Attempt ${entry.attempts} of 3` : ''}</small>
+        {retryCountdown(entry) && <small>{retryCountdown(entry)}</small>}
         {entry.state === 'downloading' && <>
           <progress aria-label={`Progress for task ${entry.id.slice(0, 8)}`} max={entry.totalBytes || undefined}
             value={progressPercent(entry) === undefined ? undefined : Math.min(entry.bytesDownloaded, entry.totalBytes!)} />
@@ -66,7 +67,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
       <div className="job-actions">{(['pause', 'retry', 'cancel'] as const).filter(action => canApplyQueueAction(entry, action)).map(action => <button
         key={action} className={action === 'cancel' ? 'secondary' : undefined} disabled={busy || !online}
         onClick={() => action !== 'cancel' || window.confirm('Cancel this download?') ? onAction(entry.id, action) : undefined}>
-        {action === 'retry' ? entry.state === 'paused' ? 'Resume' : 'Retry' : action[0].toUpperCase() + action.slice(1)}
+        {action === 'retry' ? entry.state === 'paused' ? 'Resume' : entry.state === 'queued' ? 'Retry now' : 'Retry' : action[0].toUpperCase() + action.slice(1)}
       </button>)}</div>
     </article>)}
   </section>;
