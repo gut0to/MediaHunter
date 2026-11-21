@@ -3,9 +3,9 @@ import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, q
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
-  onExport: () => void; onClear: () => void };
+  onPriority: (id: string, priority: QueueJob['priority']) => void; onExport: () => void; onClear: () => void };
 
-export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onExport, onClear }: Props) {
+export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -64,7 +64,13 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         </>}
         {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
       </div>
-      <div className="job-actions">{(['pause', 'retry', 'cancel'] as const).filter(action => canApplyQueueAction(entry, action)).map(action => <button
+      <div className="job-actions">
+        {['queued', 'paused'].includes(entry.state) && <label>Priority<select aria-label={`Priority for task ${entry.id.slice(0, 8)}`}
+          value={entry.priority} disabled={busy || !online}
+          onChange={event => onPriority(entry.id, event.target.value as QueueJob['priority'])}>
+          <option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option>
+        </select></label>}
+        {(['pause', 'retry', 'cancel'] as const).filter(action => canApplyQueueAction(entry, action)).map(action => <button
         key={action} className={action === 'cancel' ? 'secondary' : undefined} disabled={busy || !online}
         onClick={() => action !== 'cancel' || window.confirm('Cancel this download?') ? onAction(entry.id, action) : undefined}>
         {action === 'retry' ? entry.state === 'paused' ? 'Resume' : entry.state === 'queued' ? 'Retry now' : 'Retry' : action[0].toUpperCase() + action.slice(1)}
