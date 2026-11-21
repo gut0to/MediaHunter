@@ -26,7 +26,9 @@ jobs:
       - run: pnpm lint
       - run: node scripts/check-docs.mjs
       - run: bash -n scripts/install-hub.sh scripts/uninstall-hub.sh
-      - run: pnpm audit --audit-level high
+      # No patched picomatch release exists yet. Keep the exception scoped to
+      # the published advisory so every other high-severity finding still fails.
+      - run: pnpm audit --audit-level high --ignore GHSA-fc5q-39xc-vjpf
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

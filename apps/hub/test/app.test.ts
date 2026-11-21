@@ -56,6 +56,8 @@ test('pair, queue, recover an expired lease across restart, fence old workers an
     time += 46_000;
     store = openStore(directory);
     app = await buildApp(store, [], () => time);
+    expect((await post('/agent/jobs/lease', { profiles: ['default'] }, agent.token)).json()).toBeNull();
+    time += 4_000;
     const next = (await post('/agent/jobs/lease', { profiles: ['default'] }, agent.token)).json<typeof first>();
     expect(next.id).toBe(first.id);
     expect(next.leaseId).not.toBe(first.leaseId);

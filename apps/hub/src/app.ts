@@ -51,8 +51,8 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires<=?)`).run(time, time);
     db.prepare(`UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'failed' ELSE 'queued' END,
       error_code='LEASE_LOST', bytes_downloaded=0, total_bytes=NULL,
-      next_attempt_at=CASE WHEN attempts>=3 THEN NULL ELSE ? + CASE attempts WHEN 1 THEN 5000 ELSE 15000 END END,
-      lease_id=NULL, lease_until=NULL, updated=? WHERE state IN ('leased','downloading') AND lease_until<=?`).run(time, time, time);
+      next_attempt_at=CASE WHEN attempts>=3 THEN NULL ELSE lease_until + CASE attempts WHEN 1 THEN 5000 ELSE 15000 END END,
+      lease_id=NULL, lease_until=NULL, updated=? WHERE state IN ('leased','downloading') AND lease_until<=?`).run(time, time);
     db.prepare('DELETE FROM scans WHERE expires<=?').run(time);
     db.prepare('DELETE FROM pairing_codes WHERE expires<=?').run(time);
     db.prepare(`DELETE FROM jobs WHERE state IN ${terminal} AND updated<=?`).run(time - retention.historyTTL);
