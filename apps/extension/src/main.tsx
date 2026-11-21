@@ -12,6 +12,7 @@ type Connection = { origin: string; token: string };
 type Result = Candidate & { id: string };
 type Agent = ReturnType<typeof agents.parse>[number];
 type Job = ReturnType<typeof job.parse>;
+type Priority = Job['priority'];
 
 function hubOrigin(raw: string) {
   const url = new URL(raw.trim());
@@ -65,6 +66,7 @@ function Popup() {
   const [formats, setFormats] = useState<Record<string, string>>({});
   const [probes, setProbes] = useState<Record<string, string>>({});
   const [destination, setDestination] = useState('default');
+  const [priority, setPriority] = useState<Priority>('normal');
   const [captureTab, setCaptureTab] = useState<number>();
   const [allowedHosts, setAllowedHosts] = useState('');
   const [advanced, setAdvanced] = useState(false);
@@ -296,7 +298,8 @@ function Popup() {
         const idempotencyKey = keys.get(key) ?? crypto.randomUUID();
         keys.set(key, idempotencyKey);
         const added = job.parse(await api(connection, '/jobs', { candidateId: item.id, targetAgentId: target,
-          idempotencyKey, purpose, destinationProfileId: profile, requestedFormat: purpose === 'download' ? formats[item.id] || undefined : undefined }));
+          idempotencyKey, purpose, destinationProfileId: profile, priority,
+          requestedFormat: purpose === 'download' ? formats[item.id] || undefined : undefined }));
         setJobs(current => [added, ...current.filter(currentJob => currentJob.id !== added.id)]);
         setQueued(current => [...current, key]);
         if (purpose === 'probe') setProbes(current => ({ ...current, [item.id]: added.id }));
@@ -323,6 +326,15 @@ function Popup() {
       const failed = outcomes.length - updates.length;
       if (failed) throw new Error(`${failed} of ${outcomes.length} queue actions could not be completed.`);
       setMessage(ids.length === 1 ? 'Download updated.' : `${ids.length} downloads updated.`);
+    });
+  }
+
+  function applyPriority(id: string, nextPriority: Priority) {
+    if (!connection) return;
+    void run(async () => {
+      const updated = job.parse(await api(connection, `/jobs/${id}/priority`, { priority: nextPriority }));
+      setJobs(current => current.map(entry => entry.id === updated.id ? updated : entry));
+      setMessage('Download priority updated.');
     });
   }
 
@@ -369,9 +381,14 @@ function Popup() {
       <label>Destination<select value={profile} onChange={event => setDestination(event.target.value)}>
         {profileNames.map(name => <option key={name}>{name}</option>)}
       </select></label>
+      <label>New download priority<select value={priority} onChange={event => setPriority(event.target.value as Priority)}>
+        <option value="high">High</option>
+        <option value="normal">Normal</option>
+        <option value="low">Low</option>
+      </select></label>
       <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
         onAction={(id, action) => applyQueueAction([id], action)}
-        onBulkAction={applyQueueAction} onExport={exportHistory} onClear={clearHistory} />
+        onBulkAction={applyQueueAction} onPriority={applyPriority} onExport={exportHistory} onClear={clearHistory} />
       <button className="secondary" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>Capture options</button>
       {advanced && <section>
         <label>Extra media origins<input value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} placeholder="https://media.example.net" /></label>

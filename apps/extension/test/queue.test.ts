@@ -16,6 +16,9 @@ test('queue actions are limited to states that support them', () => {
   expect(canApplyQueueAction(entry('downloading'), 'pause')).toBe(true);
   expect(canApplyQueueAction(entry('failed', 'download', 'HTTP_ERROR'), 'retry')).toBe(true);
   expect(canApplyQueueAction(entry('completed'), 'cancel')).toBe(false);
+  const scheduled = job.parse({ id: '00000000-0000-4000-8000-000000000001', state: 'queued',
+    bytesDownloaded: 0, errorCode: 'HTTP_ERROR', nextAttemptAt: Date.now() + 5_000 });
+  expect(canApplyQueueAction(scheduled, 'retry')).toBe(true);
 });
 
 test('queue labels translate internal states into useful recovery guidance', () => {

@@ -42,7 +42,13 @@ resources remain outside discovery. Read warnings from the scan.
 - DESTINATION_ERROR requires an existing local drive directory, sufficient
   space, and an NTFS destination that supports hard links.
 - HTTP_ERROR means the origin returned a non-success response. Temporary
-  responses get bounded retries. The agent does not forward browser cookies.
+  responses get bounded retries. The queue shows the next retry time and lets
+  you retry immediately. After three leases, the failure requires manual
+  retry. The agent does not forward browser cookies.
+
+Priority affects only jobs that are ready to lease. A high-priority job in
+backoff waits until its scheduled time, and an already active transfer is not
+preempted. Change priority while a job is queued or paused.
 
 ## Interrupted files and history
 
