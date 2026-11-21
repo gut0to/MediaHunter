@@ -3,7 +3,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { agents, candidate, claimInput, job, jobInput, kind, lease, leaseReport, pairing, profileId, scanInput, scanResult, sourceUrl, uuid } from '@mediahunter/contracts';
+import { agents, candidate, claimInput, job, jobInput, jobPriority, kind, lease, leaseReport, pairing, profileId, scanInput, scanResult, sourceUrl, uuid } from '@mediahunter/contracts';
 import { hash, secret, type Store } from './store.ts';
 import { automaticRetryDelay, shouldRetryAutomatically } from './retry.ts';
 
@@ -167,6 +167,16 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
     const changed = db.prepare(`UPDATE jobs SET state='canceled', lease_id=NULL, lease_until=NULL, updated=?
       WHERE id=? AND owner=? AND state NOT IN ${terminal}`).run(now(), id, owner);
     if (!changed.changes) throw new ApiError(409, 'JOB_NOT_CANCELABLE');
+    return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
+  });
+
+  app.post(path + '/jobs/:id/priority', request => {
+    const owner = authenticate(request, 'extension');
+    const { id } = z.object({ id: uuid }).parse(request.params);
+    const { priority } = z.object({ priority: jobPriority }).parse(request.body);
+    const changed = db.prepare("UPDATE jobs SET priority=?,updated=? WHERE id=? AND owner=? AND state IN ('queued','paused')")
+      .run(priority, now(), id, owner);
+    if (!changed.changes) throw new ApiError(409, 'JOB_PRIORITY_UNAVAILABLE');
     return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
   });
 
