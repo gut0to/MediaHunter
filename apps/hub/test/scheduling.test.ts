@@ -84,3 +84,21 @@ test('keeps permanent failures terminal instead of retrying them', async () => {
     fixture.store.db.close();
   }
 });
+
+test('changes priority only for queued jobs owned by the caller', async () => {
+  const fixture = await setup();
+  try {
+    const queued = await fixture.queue('low');
+    expect((await fixture.post('/jobs/' + queued.id + '/priority', { priority: 'high' })).json())
+      .toMatchObject({ id: queued.id, priority: 'high' });
+    const outsider = { id: randomUUID(), token: 'c'.repeat(64) };
+    fixture.store.db.prepare('INSERT INTO devices (id,kind,name,token_hash,last_seen) VALUES (?,?,?,?,?)')
+      .run(outsider.id, 'extension', 'Other extension', hash(outsider.token), Date.now());
+    expect((await fixture.post('/jobs/' + queued.id + '/priority', { priority: 'low' }, outsider.token)).statusCode).toBe(409);
+    await fixture.post('/agent/jobs/lease', {}, fixture.agent.token);
+    expect((await fixture.post('/jobs/' + queued.id + '/priority', { priority: 'normal' })).statusCode).toBe(409);
+  } finally {
+    await fixture.app.close();
+    fixture.store.db.close();
+  }
+});
