@@ -119,11 +119,12 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
     const owner = authenticate(request, 'extension');
     const input = jobInput.parse(request.body);
     return db.transaction(() => {
-      const existing = db.prepare(`SELECT ${publicJob}, candidate_id, agent, purpose, requested_format, destination_profile_id FROM jobs WHERE owner=? AND idempotency_key=?`)
-        .get(owner, input.idempotencyKey) as { candidate_id: string; agent: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
+      const existing = db.prepare(`SELECT ${publicJob}, candidate_id, agent, requested_format, destination_profile_id FROM jobs WHERE owner=? AND idempotency_key=?`)
+        .get(owner, input.idempotencyKey) as { candidate_id: string; agent: string; purpose: string; requested_format: string | null; destination_profile_id: string; priority: string } | undefined;
       if (existing) {
         if (existing.candidate_id !== input.candidateId || existing.agent !== input.targetAgentId || existing.purpose !== input.purpose ||
-          existing.requested_format !== (input.requestedFormat ?? null) || existing.destination_profile_id !== input.destinationProfileId) {
+          existing.requested_format !== (input.requestedFormat ?? null) || existing.destination_profile_id !== input.destinationProfileId ||
+          existing.priority !== input.priority) {
           throw new ApiError(409, 'IDEMPOTENCY_CONFLICT');
         }
         return formatJob(existing);
@@ -144,9 +145,10 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const count = db.prepare(`SELECT count(*) AS count FROM jobs WHERE owner=? AND state NOT IN ${terminal}`).get(owner) as { count: number };
       if (count.count >= 200) throw new ApiError(429, 'QUEUE_LIMIT');
       const id = randomUUID();
-      db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
-          input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null, input.destinationProfileId);
+      db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id,priority)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
+          input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null,
+          input.destinationProfileId, input.priority);
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     }).immediate();
   });
