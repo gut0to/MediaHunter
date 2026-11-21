@@ -48,3 +48,22 @@ test('leases high priority work before older normal and low jobs', async () => {
     fixture.store.db.close();
   }
 });
+
+test('holds a transient failure until its retry window opens', async () => {
+  const fixture = await setup();
+  try {
+    const queued = await fixture.queue('normal');
+    const lease = (await fixture.post('/agent/jobs/lease', {}, fixture.agent.token)).json<{ id: string; leaseId: string }>();
+    const failed = await fixture.post('/agent/jobs/' + lease.id + '/fail', {
+      leaseId: lease.leaseId, errorCode: 'HTTP_ERROR', bytesDownloaded: 512, totalBytes: 1024,
+    }, fixture.agent.token);
+    expect(failed.json()).toMatchObject({ id: queued.id, state: 'queued', attempts: 1,
+      errorCode: 'HTTP_ERROR', bytesDownloaded: 0, totalBytes: null });
+    expect((await fixture.post('/agent/jobs/lease', {}, fixture.agent.token)).json()).toBeNull();
+    fixture.advance(5_000);
+    expect((await fixture.post('/agent/jobs/lease', {}, fixture.agent.token)).json()).toMatchObject({ id: queued.id });
+  } finally {
+    await fixture.app.close();
+    fixture.store.db.close();
+  }
+});
