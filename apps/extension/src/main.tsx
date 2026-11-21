@@ -372,6 +372,11 @@ function Popup() {
       <label>Destination<select value={profile} onChange={event => setDestination(event.target.value)}>
         {profileNames.map(name => <option key={name}>{name}</option>)}
       </select></label>
+      <label>New download priority<select value={priority} onChange={event => setPriority(event.target.value as Priority)}>
+        <option value="high">High</option>
+        <option value="normal">Normal</option>
+        <option value="low">Low</option>
+      </select></label>
       <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
         onAction={(id, action) => applyQueueAction([id], action)}
         onBulkAction={applyQueueAction} onExport={exportHistory} onClear={clearHistory} />
