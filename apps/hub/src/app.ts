@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { agents, candidate, claimInput, job, jobInput, kind, lease, leaseReport, pairing, profileId, scanInput, scanResult, sourceUrl, uuid } from '@mediahunter/contracts';
 import { hash, secret, type Store } from './store.ts';
+import { automaticRetryDelay, shouldRetryAutomatically } from './retry.ts';
 
 const minute = 60_000;
 const leaseDuration = 45_000;
@@ -249,12 +250,17 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const report = leaseReport.parse(request.body);
       const time = now();
       clean.immediate(time);
-      const state = action === 'heartbeat' ? 'downloading' : action === 'complete' ? 'completed' :
-        report.errorCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
+      const current = db.prepare('SELECT attempts FROM jobs WHERE id=? AND agent=? AND lease_id=?')
+        .get(id, agent, report.leaseId) as { attempts: number } | undefined;
+      const failureCode = report.errorCode ?? 'DOWNLOAD_FAILED';
+      const retry = action === 'fail' && current && shouldRetryAutomatically(failureCode, current.attempts);
+      const state = action === 'heartbeat' ? 'downloading' : action === 'complete' ? 'completed' : retry ? 'queued' :
+        failureCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
+      const nextAttemptAt = retry ? time + automaticRetryDelay(current.attempts)! : null;
       const changed = db.prepare(`UPDATE jobs SET state=?, bytes_downloaded=COALESCE(?, bytes_downloaded), error_code=?,
-        lease_until=?, updated=?, formats_json=COALESCE(?, formats_json), total_bytes=COALESCE(?, total_bytes) WHERE id=? AND agent=? AND lease_id=? AND
+        lease_until=?, next_attempt_at=?, updated=?, formats_json=COALESCE(?, formats_json), total_bytes=COALESCE(?, total_bytes) WHERE id=? AND agent=? AND lease_id=? AND
         (state IN ('leased','downloading') OR state=?)`).run(state, report.bytesDownloaded ?? null,
-        action === 'fail' ? report.errorCode ?? 'DOWNLOAD_FAILED' : null, action === 'heartbeat' ? time + leaseDuration : null,
+        action === 'fail' ? failureCode : null, action === 'heartbeat' ? time + leaseDuration : null, nextAttemptAt,
         time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, report.totalBytes ?? null, id, agent, report.leaseId, state);
       if (!changed.changes) throw new ApiError(409, 'LEASE_LOST');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
