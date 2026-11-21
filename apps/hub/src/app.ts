@@ -270,10 +270,11 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
         failureCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
       const nextAttemptAt = retry ? time + automaticRetryDelay(current.attempts)! : null;
       const changed = db.prepare(`UPDATE jobs SET state=?, bytes_downloaded=COALESCE(?, bytes_downloaded), error_code=?,
-        lease_until=?, next_attempt_at=?, updated=?, formats_json=COALESCE(?, formats_json),
+        lease_until=?, next_attempt_at=?, lease_id=CASE WHEN ? THEN NULL ELSE lease_id END,
+        updated=?, formats_json=COALESCE(?, formats_json),
         total_bytes=CASE WHEN ? THEN NULL ELSE COALESCE(?, total_bytes) END WHERE id=? AND agent=? AND lease_id=? AND
         (state IN ('leased','downloading') OR state=?)`).run(state, retry ? 0 : report.bytesDownloaded ?? null,
-        action === 'fail' ? failureCode : null, action === 'heartbeat' ? time + leaseDuration : null, nextAttemptAt,
+        action === 'fail' ? failureCode : null, action === 'heartbeat' ? time + leaseDuration : null, nextAttemptAt, retry ? 1 : 0,
         time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, retry ? 1 : 0,
         report.totalBytes ?? null, id, agent, report.leaseId, state);
       if (!changed.changes) throw new ApiError(409, 'LEASE_LOST');
