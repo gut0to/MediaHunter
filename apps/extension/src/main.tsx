@@ -12,6 +12,7 @@ type Connection = { origin: string; token: string };
 type Result = Candidate & { id: string };
 type Agent = ReturnType<typeof agents.parse>[number];
 type Job = ReturnType<typeof job.parse>;
+type Priority = Job['priority'];
 
 function hubOrigin(raw: string) {
   const url = new URL(raw.trim());
@@ -65,6 +66,7 @@ function Popup() {
   const [formats, setFormats] = useState<Record<string, string>>({});
   const [probes, setProbes] = useState<Record<string, string>>({});
   const [destination, setDestination] = useState('default');
+  const [priority, setPriority] = useState<Priority>('normal');
   const [captureTab, setCaptureTab] = useState<number>();
   const [allowedHosts, setAllowedHosts] = useState('');
   const [advanced, setAdvanced] = useState(false);
@@ -296,7 +298,8 @@ function Popup() {
         const idempotencyKey = keys.get(key) ?? crypto.randomUUID();
         keys.set(key, idempotencyKey);
         const added = job.parse(await api(connection, '/jobs', { candidateId: item.id, targetAgentId: target,
-          idempotencyKey, purpose, destinationProfileId: profile, requestedFormat: purpose === 'download' ? formats[item.id] || undefined : undefined }));
+          idempotencyKey, purpose, destinationProfileId: profile, priority,
+          requestedFormat: purpose === 'download' ? formats[item.id] || undefined : undefined }));
         setJobs(current => [added, ...current.filter(currentJob => currentJob.id !== added.id)]);
         setQueued(current => [...current, key]);
         if (purpose === 'probe') setProbes(current => ({ ...current, [item.id]: added.id }));
