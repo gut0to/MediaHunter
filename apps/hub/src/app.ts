@@ -229,7 +229,9 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const active = db.prepare("SELECT count(*) AS count FROM jobs WHERE agent=? AND state IN ('leased','downloading')").get(agent) as { count: number };
       if (active.count >= 2) return null;
       const next = db.prepare(`SELECT j.id,j.media_type,j.delivery,j.purpose,j.requested_format,j.destination_profile_id,c.source FROM jobs j JOIN candidates c ON c.id=j.candidate_id
-        WHERE j.agent=? AND j.state='queued' ORDER BY j.created LIMIT 1`).get(agent) as { id: string; media_type: 'image' | 'video'; source: string; delivery: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
+        WHERE j.agent=? AND j.state='queued'
+        ORDER BY CASE j.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, j.created LIMIT 1`)
+        .get(agent) as { id: string; media_type: 'image' | 'video'; source: string; delivery: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
       if (!next) return null;
       const leaseId = randomUUID();
       const url = sourceUrl.parse(store.decrypt(next.source));
