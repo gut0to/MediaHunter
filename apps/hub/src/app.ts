@@ -179,7 +179,8 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const changed = action === 'pause'
         ? db.prepare("UPDATE jobs SET state='paused',lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('queued','leased','downloading')").run(time, id, owner)
         : db.prepare(`UPDATE jobs SET state='queued',attempts=0,bytes_downloaded=0,total_bytes=NULL,error_code=NULL,formats_json=NULL,
-          lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('paused','failed') AND candidate_id IN
+          lease_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated=? WHERE id=? AND owner=? AND
+          (state IN ('paused','failed') OR (state='queued' AND next_attempt_at IS NOT NULL)) AND candidate_id IN
           (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires>?)`).run(time, id, owner, time);
       if (!changed.changes) throw new ApiError(409, 'JOB_ACTION_UNAVAILABLE');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
