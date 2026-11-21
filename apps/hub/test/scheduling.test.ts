@@ -67,3 +67,20 @@ test('holds a transient failure until its retry window opens', async () => {
     fixture.store.db.close();
   }
 });
+
+test('keeps permanent failures terminal instead of retrying them', async () => {
+  const fixture = await setup();
+  try {
+    await fixture.queue('normal');
+    const lease = (await fixture.post('/agent/jobs/lease', {}, fixture.agent.token)).json<{ id: string; leaseId: string }>();
+    const failed = await fixture.post('/agent/jobs/' + lease.id + '/fail', {
+      leaseId: lease.leaseId, errorCode: 'DESTINATION_ERROR',
+    }, fixture.agent.token);
+    expect(failed.json()).toMatchObject({ state: 'failed', attempts: 1, errorCode: 'DESTINATION_ERROR', nextAttemptAt: null });
+    fixture.advance(60_000);
+    expect((await fixture.post('/agent/jobs/lease', {}, fixture.agent.token)).json()).toBeNull();
+  } finally {
+    await fixture.app.close();
+    fixture.store.db.close();
+  }
+});
