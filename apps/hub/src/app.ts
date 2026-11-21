@@ -258,10 +258,12 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
         failureCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
       const nextAttemptAt = retry ? time + automaticRetryDelay(current.attempts)! : null;
       const changed = db.prepare(`UPDATE jobs SET state=?, bytes_downloaded=COALESCE(?, bytes_downloaded), error_code=?,
-        lease_until=?, next_attempt_at=?, updated=?, formats_json=COALESCE(?, formats_json), total_bytes=COALESCE(?, total_bytes) WHERE id=? AND agent=? AND lease_id=? AND
-        (state IN ('leased','downloading') OR state=?)`).run(state, report.bytesDownloaded ?? null,
+        lease_until=?, next_attempt_at=?, updated=?, formats_json=COALESCE(?, formats_json),
+        total_bytes=CASE WHEN ? THEN NULL ELSE COALESCE(?, total_bytes) END WHERE id=? AND agent=? AND lease_id=? AND
+        (state IN ('leased','downloading') OR state=?)`).run(state, retry ? 0 : report.bytesDownloaded ?? null,
         action === 'fail' ? failureCode : null, action === 'heartbeat' ? time + leaseDuration : null, nextAttemptAt,
-        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, report.totalBytes ?? null, id, agent, report.leaseId, state);
+        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, retry ? 1 : 0,
+        report.totalBytes ?? null, id, agent, report.leaseId, state);
       if (!changed.changes) throw new ApiError(409, 'LEASE_LOST');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     });
