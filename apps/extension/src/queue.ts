@@ -11,9 +11,10 @@ export function isActiveDownload(entry: QueueJob): boolean {
   return entry.purpose !== 'probe' && activeStates.has(entry.state);
 }
 
-export function queueStateLabel(entry: QueueJob): string {
+export function queueStateLabel(entry: QueueJob, now = Date.now()): string {
   if (entry.purpose === 'probe' && entry.state === 'downloading') return 'Inspecting formats';
   if (entry.purpose === 'probe' && entry.state === 'completed') return 'Formats ready';
+  if (entry.state === 'queued' && entry.nextAttemptAt !== null && entry.nextAttemptAt > now) return 'Retry scheduled';
   switch (entry.state) {
     case 'queued': return 'Waiting in queue';
     case 'leased': return 'Agent starting';
@@ -24,6 +25,16 @@ export function queueStateLabel(entry: QueueJob): string {
     case 'paused': return 'Paused';
     case 'rescan_required': return 'Scan again';
   }
+}
+
+export function queuePriorityLabel(priority: QueueJob['priority']): string {
+  return priority === 'high' ? 'High priority' : priority === 'low' ? 'Low priority' : 'Normal priority';
+}
+
+export function retryCountdown(entry: QueueJob, now = Date.now()): string | undefined {
+  if (entry.state !== 'queued' || entry.nextAttemptAt === null || entry.nextAttemptAt <= now) return undefined;
+  const seconds = Math.max(1, Math.ceil((entry.nextAttemptAt - now) / 1000));
+  return seconds < 60 ? `Retrying in ${seconds}s` : `Retrying in ${Math.ceil(seconds / 60)}m`;
 }
 
 const errorDescriptions: Record<NonNullable<QueueJob['errorCode']>, string> = {
@@ -56,7 +67,7 @@ export function matchesQueueFilter(entry: QueueJob, filter: QueueFilter): boolea
 export function searchQueueJob(entry: QueueJob, query: string): boolean {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return true;
-  const terms = [entry.id, entry.state, queueStateLabel(entry), entry.errorCode ?? '',
+  const terms = [entry.id, entry.state, queueStateLabel(entry), entry.priority, queuePriorityLabel(entry.priority), entry.errorCode ?? '',
     queueErrorDescription(entry.errorCode) ?? '', entry.purpose ?? 'download'];
   return terms.some(term => term.toLocaleLowerCase().includes(normalized));
 }
