@@ -96,6 +96,7 @@ export function progressPercent(entry: QueueJob): number | undefined {
 
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
   if (action === 'pause') return ['queued', 'leased', 'downloading'].includes(entry.state);
-  if (action === 'retry') return ['paused', 'failed'].includes(entry.state);
+  if (action === 'retry') return ['paused', 'failed'].includes(entry.state) ||
+    (entry.state === 'queued' && entry.nextAttemptAt !== null);
   return ['queued', 'leased', 'downloading', 'paused'].includes(entry.state);
 }
