@@ -3,13 +3,15 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { agents, candidate, claimInput, job, jobInput, kind, lease, leaseReport, pairing, profileId, scanInput, scanResult, sourceUrl, uuid } from '@mediahunter/contracts';
+import { agents, candidate, claimInput, job, jobInput, jobPriority, kind, lease, leaseReport, pairing, profileId, scanInput, scanResult, sourceUrl, uuid } from '@mediahunter/contracts';
 import { hash, secret, type Store } from './store.ts';
+import { automaticRetryDelay, shouldRetryAutomatically } from './retry.ts';
 
 const minute = 60_000;
 const leaseDuration = 45_000;
 const terminal = "('completed','failed','canceled','rescan_required')";
-const publicJob = 'id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode, total_bytes AS totalBytes, purpose, formats_json';
+const publicJob = `id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode,
+  total_bytes AS totalBytes, purpose, formats_json, priority, attempts, next_attempt_at AS nextAttemptAt`;
 const formatJob = (value: unknown) => {
   const row = value as { formats_json?: string };
   return job.parse({ ...row, formats: row.formats_json ? JSON.parse(row.formats_json) : undefined });
@@ -48,7 +50,8 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       WHERE state NOT IN ${terminal} AND candidate_id IN
       (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires<=?)`).run(time, time);
     db.prepare(`UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'failed' ELSE 'queued' END,
-      error_code=CASE WHEN attempts>=3 THEN 'LEASE_LOST' ELSE NULL END, bytes_downloaded=0, total_bytes=NULL,
+      error_code='LEASE_LOST', bytes_downloaded=0, total_bytes=NULL,
+      next_attempt_at=CASE WHEN attempts>=3 THEN NULL ELSE lease_until + CASE attempts WHEN 1 THEN 5000 ELSE 15000 END END,
       lease_id=NULL, lease_until=NULL, updated=? WHERE state IN ('leased','downloading') AND lease_until<=?`).run(time, time);
     db.prepare('DELETE FROM scans WHERE expires<=?').run(time);
     db.prepare('DELETE FROM pairing_codes WHERE expires<=?').run(time);
@@ -118,11 +121,12 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
     const owner = authenticate(request, 'extension');
     const input = jobInput.parse(request.body);
     return db.transaction(() => {
-      const existing = db.prepare(`SELECT ${publicJob}, candidate_id, agent, purpose, requested_format, destination_profile_id FROM jobs WHERE owner=? AND idempotency_key=?`)
-        .get(owner, input.idempotencyKey) as { candidate_id: string; agent: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
+      const existing = db.prepare(`SELECT ${publicJob}, candidate_id, agent, requested_format, destination_profile_id FROM jobs WHERE owner=? AND idempotency_key=?`)
+        .get(owner, input.idempotencyKey) as { candidate_id: string; agent: string; purpose: string; requested_format: string | null; destination_profile_id: string; priority: string } | undefined;
       if (existing) {
         if (existing.candidate_id !== input.candidateId || existing.agent !== input.targetAgentId || existing.purpose !== input.purpose ||
-          existing.requested_format !== (input.requestedFormat ?? null) || existing.destination_profile_id !== input.destinationProfileId) {
+          existing.requested_format !== (input.requestedFormat ?? null) || existing.destination_profile_id !== input.destinationProfileId ||
+          existing.priority !== input.priority) {
           throw new ApiError(409, 'IDEMPOTENCY_CONFLICT');
         }
         return formatJob(existing);
@@ -143,9 +147,10 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const count = db.prepare(`SELECT count(*) AS count FROM jobs WHERE owner=? AND state NOT IN ${terminal}`).get(owner) as { count: number };
       if (count.count >= 200) throw new ApiError(429, 'QUEUE_LIMIT');
       const id = randomUUID();
-      db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
-          input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null, input.destinationProfileId);
+      db.prepare(`INSERT INTO jobs (id,owner,agent,candidate_id,media_type,idempotency_key,created,updated,delivery,purpose,requested_format,destination_profile_id,priority)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, owner, input.targetAgentId, input.candidateId, metadata.mediaType,
+          input.idempotencyKey, time, time, metadata.delivery ?? 'direct', input.purpose, input.requestedFormat ?? null,
+          input.destinationProfileId, input.priority);
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     }).immediate();
   });
@@ -165,6 +170,16 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
     return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
   });
 
+  app.post(path + '/jobs/:id/priority', request => {
+    const owner = authenticate(request, 'extension');
+    const { id } = z.object({ id: uuid }).parse(request.params);
+    const { priority } = z.object({ priority: jobPriority }).parse(request.body);
+    const changed = db.prepare("UPDATE jobs SET priority=?,updated=? WHERE id=? AND owner=? AND state IN ('queued','paused')")
+      .run(priority, now(), id, owner);
+    if (!changed.changes) throw new ApiError(409, 'JOB_PRIORITY_UNAVAILABLE');
+    return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
+  });
+
   for (const action of ['pause', 'retry'] as const) {
     app.post(path + '/jobs/:id/' + action, request => {
       const owner = authenticate(request, 'extension');
@@ -174,7 +189,8 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const changed = action === 'pause'
         ? db.prepare("UPDATE jobs SET state='paused',lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('queued','leased','downloading')").run(time, id, owner)
         : db.prepare(`UPDATE jobs SET state='queued',attempts=0,bytes_downloaded=0,total_bytes=NULL,error_code=NULL,formats_json=NULL,
-          lease_id=NULL,lease_until=NULL,updated=? WHERE id=? AND owner=? AND state IN ('paused','failed') AND candidate_id IN
+          lease_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated=? WHERE id=? AND owner=? AND
+          (state IN ('paused','failed') OR (state='queued' AND next_attempt_at IS NOT NULL)) AND candidate_id IN
           (SELECT c.id FROM candidates c JOIN scans s ON s.id=c.scan_id WHERE s.expires>?)`).run(time, id, owner, time);
       if (!changed.changes) throw new ApiError(409, 'JOB_ACTION_UNAVAILABLE');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
@@ -226,11 +242,13 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const active = db.prepare("SELECT count(*) AS count FROM jobs WHERE agent=? AND state IN ('leased','downloading')").get(agent) as { count: number };
       if (active.count >= 2) return null;
       const next = db.prepare(`SELECT j.id,j.media_type,j.delivery,j.purpose,j.requested_format,j.destination_profile_id,c.source FROM jobs j JOIN candidates c ON c.id=j.candidate_id
-        WHERE j.agent=? AND j.state='queued' ORDER BY j.created LIMIT 1`).get(agent) as { id: string; media_type: 'image' | 'video'; source: string; delivery: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
+        WHERE j.agent=? AND j.state='queued' AND (j.next_attempt_at IS NULL OR j.next_attempt_at<=?)
+        ORDER BY CASE j.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, j.created LIMIT 1`)
+        .get(agent, time) as { id: string; media_type: 'image' | 'video'; source: string; delivery: string; purpose: string; requested_format: string | null; destination_profile_id: string } | undefined;
       if (!next) return null;
       const leaseId = randomUUID();
       const url = sourceUrl.parse(store.decrypt(next.source));
-      db.prepare("UPDATE jobs SET state='leased', lease_id=?, lease_until=?, attempts=attempts+1, updated=? WHERE id=?")
+      db.prepare("UPDATE jobs SET state='leased', lease_id=?, lease_until=?, next_attempt_at=NULL, attempts=attempts+1, updated=? WHERE id=?")
         .run(leaseId, time + leaseDuration, time, next.id);
       return lease.parse({ id: next.id, leaseId, mediaType: next.media_type, url, destinationProfileId: next.destination_profile_id,
         delivery: next.delivery, purpose: next.purpose, requestedFormat: next.requested_format });
@@ -244,13 +262,21 @@ export async function buildApp(store: Store, allowedOrigins: string[] = [], now 
       const report = leaseReport.parse(request.body);
       const time = now();
       clean.immediate(time);
-      const state = action === 'heartbeat' ? 'downloading' : action === 'complete' ? 'completed' :
-        report.errorCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
+      const current = db.prepare('SELECT attempts FROM jobs WHERE id=? AND agent=? AND lease_id=?')
+        .get(id, agent, report.leaseId) as { attempts: number } | undefined;
+      const failureCode = report.errorCode ?? 'DOWNLOAD_FAILED';
+      const retry = action === 'fail' && current && shouldRetryAutomatically(failureCode, current.attempts);
+      const state = action === 'heartbeat' ? 'downloading' : action === 'complete' ? 'completed' : retry ? 'queued' :
+        failureCode === 'EXPIRED_URL' ? 'rescan_required' : 'failed';
+      const nextAttemptAt = retry ? time + automaticRetryDelay(current.attempts)! : null;
       const changed = db.prepare(`UPDATE jobs SET state=?, bytes_downloaded=COALESCE(?, bytes_downloaded), error_code=?,
-        lease_until=?, updated=?, formats_json=COALESCE(?, formats_json), total_bytes=COALESCE(?, total_bytes) WHERE id=? AND agent=? AND lease_id=? AND
-        (state IN ('leased','downloading') OR state=?)`).run(state, report.bytesDownloaded ?? null,
-        action === 'fail' ? report.errorCode ?? 'DOWNLOAD_FAILED' : null, action === 'heartbeat' ? time + leaseDuration : null,
-        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, report.totalBytes ?? null, id, agent, report.leaseId, state);
+        lease_until=?, next_attempt_at=?, lease_id=CASE WHEN ? THEN NULL ELSE lease_id END,
+        updated=?, formats_json=COALESCE(?, formats_json),
+        total_bytes=CASE WHEN ? THEN NULL ELSE COALESCE(?, total_bytes) END WHERE id=? AND agent=? AND lease_id=? AND
+        (state IN ('leased','downloading') OR state=?)`).run(state, retry ? 0 : report.bytesDownloaded ?? null,
+        action === 'fail' ? failureCode : null, action === 'heartbeat' ? time + leaseDuration : null, nextAttemptAt, retry ? 1 : 0,
+        time, action === 'complete' && report.formats ? JSON.stringify(report.formats) : null, retry ? 1 : 0,
+        report.totalBytes ?? null, id, agent, report.leaseId, state);
       if (!changed.changes) throw new ApiError(409, 'LEASE_LOST');
       return formatJob(db.prepare(`SELECT ${publicJob} FROM jobs WHERE id=?`).get(id));
     });
