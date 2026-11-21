@@ -22,6 +22,7 @@ export const scanInput = z.object({ pageOrigin: origin, candidates: z.array(cand
 export const claimInput = z.object({ kind, name: z.string().trim().min(1).max(60), code: z.string().regex(/^[0-9a-f]{16}$/) });
 export const pairing = z.object({ id: uuid, token: z.string().regex(/^[0-9a-f]{64}$/) });
 export const profileId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/);
+export const jobPriority = z.enum(['low', 'normal', 'high']);
 export const formatId = z.string().regex(/^[a-zA-Z0-9_.-]{1,80}$/);
 export const mediaFormat = z.object({
   id: formatId, width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(),
@@ -30,13 +31,15 @@ export const mediaFormat = z.object({
 });
 export const jobInput = z.object({
   candidateId: uuid, targetAgentId: uuid, idempotencyKey: uuid, destinationProfileId: profileId.default('default'),
-  purpose: z.enum(['probe', 'download']).default('download'), requestedFormat: formatId.optional(),
+  purpose: z.enum(['probe', 'download']).default('download'), requestedFormat: formatId.optional(), priority: jobPriority.default('normal'),
 });
 export const jobState = z.enum(['queued', 'leased', 'downloading', 'completed', 'failed', 'canceled', 'paused', 'rescan_required']);
 export const failure = z.enum(['DOWNLOAD_FAILED', 'HTTP_ERROR', 'EXPIRED_URL', 'UNSAFE_SOURCE', 'INVALID_MEDIA', 'SIZE_LIMIT', 'DESTINATION_ERROR', 'LEASE_LOST', 'TOOL_UNAVAILABLE', 'PROTECTED_MEDIA', 'UNSUPPORTED_FORMAT']);
 export const bytes = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const job = z.object({ id: uuid, state: jobState, bytesDownloaded: bytes, errorCode: failure.nullable(),
-  totalBytes: bytes.nullable().optional(), purpose: z.enum(['probe', 'download']).optional(), formats: z.array(mediaFormat).max(100).optional() });
+  totalBytes: bytes.nullable().optional(), purpose: z.enum(['probe', 'download']).optional(), formats: z.array(mediaFormat).max(100).optional(),
+  priority: jobPriority.default('normal'), attempts: z.number().int().nonnegative().default(0),
+  nextAttemptAt: z.number().int().nonnegative().nullable().default(null) });
 export const agents = z.array(z.object({ id: uuid, name: z.string(), online: z.boolean(), profiles: z.array(profileId).max(20) }));
 export const scanResult = z.object({ id: uuid, candidateIds: z.array(uuid) });
 export const lease = z.object({

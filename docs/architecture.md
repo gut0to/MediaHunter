@@ -14,9 +14,10 @@ See [formats and limitations](formats-and-limitations.md) for adaptive streams
 and browser-managed downloads.
 
 The download queue separates active work, completed work, and tasks needing
-attention. It supports search, batch pause/resume/retry/cancel, and progress
-with an explicit unknown-size state. History shows job IDs and transfer state;
-it does not retain source URLs.
+attention. It supports search, batch pause/resume/retry/cancel, three priority
+levels, and progress with an explicit unknown-size state. History shows job
+IDs, transfer state, attempt count, and retry schedule; it does not retain
+source URLs.
 
 The Hub uses SQLite WAL and a versioned schema for devices, pairing codes,
 scans, candidates, jobs, and state transition events. It issues independent bearer tokens and stores
@@ -42,6 +43,7 @@ JSON error responses contain a stable `code`.
 | POST /jobs/:id/cancel | Extension | Cancel the caller's unfinished job |
 | POST /jobs/:id/pause | Extension | Stop an active transfer and hold the job |
 | POST /jobs/:id/retry | Extension | Resume or retry a valid source |
+| POST /jobs/:id/priority | Extension | Change priority for an owned queued or paused job |
 | DELETE /jobs | Extension | Delete the caller's finished history |
 | POST /jobs/:id/open | Extension | Request opening a completed file or folder |
 | POST /agent/actions/lease | Agent | Consume a time-limited open action |
@@ -50,11 +52,14 @@ JSON error responses contain a stable `code`.
 | POST /agent/jobs/:id/complete | Agent | Acknowledge a published file |
 | POST /agent/jobs/:id/fail | Agent | Report a typed failure |
 
-A 45-second lease is fenced by an ID renewed during progress. An expired
-lease can be reassigned to the same device with a fresh ID up to three
-attempts. After 30 minutes the source expires, including for an active transfer, and unfinished jobs transition to
+A 45-second lease is fenced by an ID renewed during progress. High-priority
+jobs are leased before normal and low jobs while preserving creation order
+inside each level. Expired leases and transient download or HTTP failures use
+5-second and 15-second backoff windows before a fresh lease, up to three
+attempts. The user can request an immediate retry. Permanent failures remain
+terminal. After 30 minutes the source expires, including for an active transfer, and unfinished jobs transition to
 `rescan_required`. A 401, 403, or 410 from the origin also requests a new
-scan. Other transfer failures surface in history.
+scan. Scheduled and terminal failures retain their typed reason in history.
 
 Jobs can request download or metadata inspection, select an extractor format,
 and name one of the destination profiles advertised by the agent.

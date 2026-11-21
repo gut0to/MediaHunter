@@ -17,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -26,7 +26,9 @@ jobs:
       - run: pnpm lint
       - run: node scripts/check-docs.mjs
       - run: bash -n scripts/install-hub.sh scripts/uninstall-hub.sh
-      - run: pnpm audit --audit-level high
+      # No patched picomatch release exists yet. Keep the exception scoped to
+      # the published advisory so every other high-severity finding still fails.
+      - run: pnpm audit --audit-level high --ignore GHSA-fc5q-39xc-vjpf
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
@@ -36,13 +38,13 @@ jobs:
       - name: Exercise the MV3 extension
         if: matrix.runner == 'ubuntu-24.04'
         run: pnpm exec playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-browser-results
           path: test-results/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.runner == 'ubuntu-24.04'
         with:
           name: mediahunter-extension
@@ -72,7 +74,7 @@ jobs:
           Copy-Item -LiteralPath $ffmpeg -Destination (Join-Path $tools 'ffmpeg.exe')
           "MEDIAHUNTER_TEST_FFMPEG=$(Join-Path $tools 'ffmpeg.exe')" >> $env:GITHUB_ENV
           "MEDIAHUNTER_TEST_YTDLP=$((Get-Command yt-dlp).Source)" >> $env:GITHUB_ENV
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -107,7 +109,7 @@ jobs:
         run: |
           Copy-Item ../../LICENSE LICENSE
           Copy-Item ../../THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mediahunter-agent-windows-amd64
           path: |
@@ -143,7 +145,7 @@ jobs:
           tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -czf release-artifacts/mediahunter-hub-linux-source.tar.gz apps/hub/src apps/hub/package.json apps/extension/package.json packages/contracts package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/install-hub.sh scripts/uninstall-hub.sh scripts/mediahunter-hub.service .env.example LICENSE THIRD_PARTY_NOTICES.md README.md docs
           cp LICENSE THIRD_PARTY_NOTICES.md release-artifacts/
           node scripts/package-artifacts.mjs release-artifacts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mediahunter-release-candidate
           path: release-artifacts/
