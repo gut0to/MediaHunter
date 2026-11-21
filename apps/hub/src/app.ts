@@ -9,7 +9,8 @@ import { hash, secret, type Store } from './store.ts';
 const minute = 60_000;
 const leaseDuration = 45_000;
 const terminal = "('completed','failed','canceled','rescan_required')";
-const publicJob = 'id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode, total_bytes AS totalBytes, purpose, formats_json';
+const publicJob = `id, state, bytes_downloaded AS bytesDownloaded, error_code AS errorCode,
+  total_bytes AS totalBytes, purpose, formats_json, priority, attempts, next_attempt_at AS nextAttemptAt`;
 const formatJob = (value: unknown) => {
   const row = value as { formats_json?: string };
   return job.parse({ ...row, formats: row.formats_json ? JSON.parse(row.formats_json) : undefined });
