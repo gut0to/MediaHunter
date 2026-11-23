@@ -3,9 +3,10 @@ import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, q
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
-  onPriority: (id: string, priority: QueueJob['priority']) => void; onExport: () => void; onClear: () => void };
+  onPriority: (id: string, priority: QueueJob['priority']) => void;
+  onOpen: (id: string, action: 'file' | 'folder') => void; onExport: () => void; onClear: () => void };
 
-export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onExport, onClear }: Props) {
+export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onOpen, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
   const [sort, setSort] = useState<QueueSort>('recent');
   const [query, setQuery] = useState('');
@@ -79,6 +80,10 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
       </div>
       <div className="job-actions">
+        {entry.state === 'completed' && entry.purpose !== 'probe' && <>
+          <button disabled={busy || !online} onClick={() => onOpen(entry.id, 'file')}>Open file</button>
+          <button className="secondary" disabled={busy || !online} onClick={() => onOpen(entry.id, 'folder')}>Open folder</button>
+        </>}
         {['queued', 'paused'].includes(entry.state) && <label>Priority<select aria-label={`Priority for task ${entry.id.slice(0, 8)}`}
           value={entry.priority} disabled={busy || !online}
           onChange={event => onPriority(entry.id, event.target.value as QueueJob['priority'])}>
