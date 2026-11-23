@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, relativeTime, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
+import { canApplyQueueAction, eligibleQueueJobs, estimatedTimeRemaining, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, relativeTime, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
@@ -76,6 +76,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
           <small>{entry.totalBytes ? `${formatBytes(entry.bytesDownloaded)} of ${formatBytes(entry.totalBytes)} · ${progressPercent(entry)}%` :
             `${formatBytes(entry.bytesDownloaded)} received · total size unknown`}</small>
           {rates[entry.id] > 0 && <small>{formatBytes(rates[entry.id])}/s</small>}
+          {estimatedTimeRemaining(entry, rates[entry.id] ?? 0) && <small>{estimatedTimeRemaining(entry, rates[entry.id] ?? 0)}</small>}
         </>}
         {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
       </div>
