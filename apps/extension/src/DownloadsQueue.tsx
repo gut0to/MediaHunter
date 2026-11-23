@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queuePriorityLabel, queueStateLabel, retryCountdown, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
+import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
@@ -7,9 +7,10 @@ type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean
 
 export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
+  const [sort, setSort] = useState<QueueSort>('recent');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const visible = jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query));
+  const visible = sortQueueJobs(jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query)), sort);
   const selectable = visible.filter(entry => (['pause', 'retry', 'cancel'] as const).some(action => canApplyQueueAction(entry, action)));
   const selected = selectable.filter(entry => selectedIds.includes(entry.id));
   const eligible = (action: QueueAction) => eligibleQueueJobs(selected, action);
@@ -32,6 +33,10 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
     <label>Search downloads<input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelectedIds([]); }}
       placeholder="Task ID, status, or error" /></label>
     <div className="queue-tools">
+      <label>Sort<select value={sort} onChange={event => setSort(event.target.value as QueueSort)}>
+        {queueSorts.map(value => <option key={value} value={value}>{value === 'recent' ? 'Recently updated' :
+          value === 'oldest' ? 'Oldest first' : value === 'priority' ? 'Priority' : 'Progress'}</option>)}
+      </select></label>
       <button className="secondary" disabled={busy} onClick={onExport}>Export JSON</button>
       <button className="secondary" disabled={busy || !online} onClick={onClear}>Clear finished history</button>
     </div>
