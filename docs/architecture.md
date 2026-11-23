@@ -14,10 +14,13 @@ See [formats and limitations](formats-and-limitations.md) for adaptive streams
 and browser-managed downloads.
 
 The download queue separates active work, completed work, and tasks needing
-attention. It supports search, batch pause/resume/retry/cancel, three priority
-levels, and progress with an explicit unknown-size state. History shows job
-IDs, transfer state, attempt count, and retry schedule; it does not retain
-source URLs.
+attention. It supports search, deterministic sorting, batch
+pause/resume/retry/cancel, three priority levels, and progress with an explicit
+unknown-size state. Known-size transfers show an estimated remaining time.
+History shows job IDs, activity time, transfer state, attempt count, and retry
+schedule; JSON and CSV exports contain metadata only and never source URLs.
+Completed downloads expose explicit Open file and Open folder requests that
+are validated by the Windows agent's local receipt.
 
 The Hub uses SQLite WAL and a versioned schema for devices, pairing codes,
 scans, candidates, jobs, and state transition events. It issues independent bearer tokens and stores

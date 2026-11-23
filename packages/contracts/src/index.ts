@@ -39,7 +39,8 @@ export const bytes = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 export const job = z.object({ id: uuid, state: jobState, bytesDownloaded: bytes, errorCode: failure.nullable(),
   totalBytes: bytes.nullable().optional(), purpose: z.enum(['probe', 'download']).optional(), formats: z.array(mediaFormat).max(100).optional(),
   priority: jobPriority.default('normal'), attempts: z.number().int().nonnegative().default(0),
-  nextAttemptAt: z.number().int().nonnegative().nullable().default(null) });
+  nextAttemptAt: z.number().int().nonnegative().nullable().default(null),
+  createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative() });
 export const agents = z.array(z.object({ id: uuid, name: z.string(), online: z.boolean(), profiles: z.array(profileId).max(20) }));
 export const scanResult = z.object({ id: uuid, candidateIds: z.array(uuid) });
 export const lease = z.object({

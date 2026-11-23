@@ -3,7 +3,9 @@ import { job } from '@mediahunter/contracts';
 export type QueueJob = ReturnType<typeof job.parse>;
 export type QueueFilter = 'active' | 'completed' | 'attention' | 'all';
 export type QueueAction = 'pause' | 'retry' | 'cancel';
+export type QueueSort = 'recent' | 'oldest' | 'priority' | 'progress';
 export const queueFilters: QueueFilter[] = ['active', 'completed', 'attention', 'all'];
+export const queueSorts: QueueSort[] = ['recent', 'oldest', 'priority', 'progress'];
 
 const activeStates = new Set<QueueJob['state']>(['queued', 'leased', 'downloading', 'paused']);
 
@@ -35,6 +37,16 @@ export function retryCountdown(entry: QueueJob, now = Date.now()): string | unde
   if (entry.state !== 'queued' || entry.nextAttemptAt === null || entry.nextAttemptAt <= now) return undefined;
   const seconds = Math.max(1, Math.ceil((entry.nextAttemptAt - now) / 1000));
   return seconds < 60 ? `Retrying in ${seconds}s` : `Retrying in ${Math.ceil(seconds / 60)}m`;
+}
+
+export function relativeTime(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 const errorDescriptions: Record<NonNullable<QueueJob['errorCode']>, string> = {
@@ -92,6 +104,29 @@ export function formatBytes(bytes: number): string {
 export function progressPercent(entry: QueueJob): number | undefined {
   if (!entry.totalBytes) return undefined;
   return Math.min(100, Math.round(entry.bytesDownloaded / entry.totalBytes * 100));
+}
+
+export function estimatedTimeRemaining(entry: QueueJob, bytesPerSecond: number): string | undefined {
+  if (entry.state !== 'downloading' || !entry.totalBytes || bytesPerSecond <= 0) return undefined;
+  const seconds = Math.ceil(Math.max(0, entry.totalBytes - entry.bytesDownloaded) / bytesPerSecond);
+  if (!seconds) return 'Finishing';
+  if (seconds < 60) return `About ${seconds}s left`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `About ${minutes}m left`;
+  return `About ${Math.ceil(minutes / 60)}h left`;
+}
+
+export function sortQueueJobs(jobs: QueueJob[], sort: QueueSort): QueueJob[] {
+  const priority = { high: 0, normal: 1, low: 2 } as const;
+  return [...jobs].sort((left, right) => {
+    if (sort === 'oldest') return left.createdAt - right.createdAt || left.id.localeCompare(right.id);
+    if (sort === 'priority') return priority[left.priority] - priority[right.priority] || left.createdAt - right.createdAt;
+    if (sort === 'progress') {
+      const difference = (progressPercent(right) ?? -1) - (progressPercent(left) ?? -1);
+      if (difference) return difference;
+    }
+    return right.updatedAt - left.updatedAt || right.createdAt - left.createdAt;
+  });
 }
 
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {

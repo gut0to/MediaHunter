@@ -4,6 +4,7 @@ import { agents, candidate, claimInput, error, job, pairing, scanResult, uuid, t
 import { discover } from './discovery';
 import { groupVariants } from './quality';
 import { DownloadsQueue } from './DownloadsQueue';
+import { historyCsv } from './history';
 import type { QueueAction } from './queue';
 import { parseExtensionPreferences, preferencesForHub, preferencesWithHub, type ExtensionPreferenceStore } from './preferences';
 import './style.css';
@@ -338,13 +339,21 @@ function Popup() {
     });
   }
 
-  function exportHistory() {
+  function requestOpen(id: string, action: 'file' | 'folder') {
+    if (!connection) return;
     void run(async () => {
-      const data = JSON.stringify(jobs, null, 2);
-      const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+      await api(connection, `/jobs/${id}/open`, { action });
+      setMessage(action === 'file' ? 'Open file request sent to the Windows agent.' : 'Open folder request sent to the Windows agent.');
+    });
+  }
+
+  function exportHistory(format: 'json' | 'csv') {
+    void run(async () => {
+      const data = format === 'csv' ? historyCsv(jobs) : JSON.stringify(jobs, null, 2);
+      const url = URL.createObjectURL(new Blob([data], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json' }));
       try {
         if (!await chrome.permissions.request({ permissions: ['downloads'] })) throw new Error('Download permission was declined.');
-        await chrome.downloads.download({ url, filename: 'mediahunter-history.json', saveAs: true });
+        await chrome.downloads.download({ url, filename: `mediahunter-history.${format}`, saveAs: true });
       } finally { setTimeout(() => URL.revokeObjectURL(url), 60_000); }
     });
   }
@@ -388,7 +397,7 @@ function Popup() {
       </select></label>
       <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
         onAction={(id, action) => applyQueueAction([id], action)}
-        onBulkAction={applyQueueAction} onPriority={applyPriority} onExport={exportHistory} onClear={clearHistory} />
+        onBulkAction={applyQueueAction} onPriority={applyPriority} onOpen={requestOpen} onExport={exportHistory} onClear={clearHistory} />
       <button className="secondary" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>Capture options</button>
       {advanced && <section>
         <label>Extra media origins<input value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} placeholder="https://media.example.net" /></label>

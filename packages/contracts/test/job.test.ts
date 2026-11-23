@@ -12,9 +12,10 @@ test('queue inputs default to normal priority and reject unknown levels', () => 
   expect(jobInput.safeParse({ ...baseInput, priority: 'urgent' }).success).toBe(false);
 });
 
-test('public jobs validate attempt scheduling metadata', () => {
+test('public jobs validate scheduling and timeline metadata', () => {
   const value = job.parse({ id: baseInput.idempotencyKey, state: 'queued', bytesDownloaded: 0,
-    errorCode: null, priority: 'high', attempts: 2, nextAttemptAt: 1000 });
-  expect(value).toMatchObject({ priority: 'high', attempts: 2, nextAttemptAt: 1000 });
+    errorCode: null, priority: 'high', attempts: 2, nextAttemptAt: 1000, createdAt: 500, updatedAt: 900 });
+  expect(value).toMatchObject({ priority: 'high', attempts: 2, nextAttemptAt: 1000, createdAt: 500, updatedAt: 900 });
   expect(job.safeParse({ ...value, attempts: -1 }).success).toBe(false);
+  expect(job.safeParse({ ...value, updatedAt: -1 }).success).toBe(false);
 });

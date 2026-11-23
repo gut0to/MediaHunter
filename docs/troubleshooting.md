@@ -61,6 +61,9 @@ Open file and Open folder are explicit requests to the agent and expire after
 one minute. They require a completed download and a matching local receipt.
 If you moved or renamed the file, open it directly through Windows.
 
-Export JSON saves only job metadata through the browser's save dialog.
+Export JSON and Export CSV save only job metadata through the browser's save
+dialog. Sort by recent activity, creation time, priority or known progress;
+the selected sort does not change lease order. ETA appears only when both the
+total size and a positive current transfer rate are available.
 Browser-managed transfers have their own Chromium history and save behavior,
 including the browser's retention of the original source URL.

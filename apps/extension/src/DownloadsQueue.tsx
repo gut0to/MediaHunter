@@ -1,18 +1,29 @@
-import { useState } from 'react';
-import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, matchesQueueFilter, queuePriorityLabel, queueStateLabel, retryCountdown, searchQueueJob, type QueueAction, type QueueFilter, type QueueJob } from './queue';
+import { useEffect, useState } from 'react';
+import { canApplyQueueAction, eligibleQueueJobs, estimatedTimeRemaining, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, relativeTime, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
-  onPriority: (id: string, priority: QueueJob['priority']) => void; onExport: () => void; onClear: () => void };
+  onPriority: (id: string, priority: QueueJob['priority']) => void;
+  onOpen: (id: string, action: 'file' | 'folder') => void;
+  onExport: (format: 'json' | 'csv') => void; onClear: () => void };
 
-export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onExport, onClear }: Props) {
+export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onOpen, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
+  const [sort, setSort] = useState<QueueSort>('recent');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const visible = jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query));
+  const visible = sortQueueJobs(jobs.filter(entry => matchesQueueFilter(entry, filter) && searchQueueJob(entry, query)), sort);
   const selectable = visible.filter(entry => (['pause', 'retry', 'cancel'] as const).some(action => canApplyQueueAction(entry, action)));
   const selected = selectable.filter(entry => selectedIds.includes(entry.id));
   const eligible = (action: QueueAction) => eligibleQueueJobs(selected, action);
+  useEffect(() => {
+    const actionable = new Set(jobs.filter(entry => (['pause', 'retry', 'cancel'] as const)
+      .some(action => canApplyQueueAction(entry, action))).map(entry => entry.id));
+    setSelectedIds(current => {
+      const next = current.filter(id => actionable.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [jobs]);
   const setFilterAndClear = (value: QueueFilter) => { setFilter(value); setSelectedIds([]); };
   const runBulkAction = (action: QueueAction) => {
     const entries = eligible(action);
@@ -32,7 +43,12 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
     <label>Search downloads<input type="search" value={query} onChange={event => { setQuery(event.target.value); setSelectedIds([]); }}
       placeholder="Task ID, status, or error" /></label>
     <div className="queue-tools">
-      <button className="secondary" disabled={busy} onClick={onExport}>Export JSON</button>
+      <label>Sort<select value={sort} onChange={event => setSort(event.target.value as QueueSort)}>
+        {queueSorts.map(value => <option key={value} value={value}>{value === 'recent' ? 'Recently updated' :
+          value === 'oldest' ? 'Oldest first' : value === 'priority' ? 'Priority' : 'Progress'}</option>)}
+      </select></label>
+      <button className="secondary" disabled={busy} onClick={() => onExport('json')}>Export JSON</button>
+      <button className="secondary" disabled={busy} onClick={() => onExport('csv')}>Export CSV</button>
       <button className="secondary" disabled={busy || !online} onClick={onClear}>Clear finished history</button>
     </div>
     {selectable.length > 0 && <div className="queue-bulk-actions">
@@ -54,6 +70,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
       <div className="queue-job-copy">
         <strong>{queueStateLabel(entry)}</strong>
         <small>{entry.id.slice(0, 8)} · {queuePriorityLabel(entry.priority)}{entry.attempts > 0 ? ` · Attempt ${entry.attempts} of 3` : ''}</small>
+        <small>Updated {relativeTime(entry.updatedAt)}</small>
         {retryCountdown(entry) && <small>{retryCountdown(entry)}</small>}
         {entry.state === 'downloading' && <>
           <progress aria-label={`Progress for task ${entry.id.slice(0, 8)}`} max={entry.totalBytes || undefined}
@@ -61,10 +78,15 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
           <small>{entry.totalBytes ? `${formatBytes(entry.bytesDownloaded)} of ${formatBytes(entry.totalBytes)} · ${progressPercent(entry)}%` :
             `${formatBytes(entry.bytesDownloaded)} received · total size unknown`}</small>
           {rates[entry.id] > 0 && <small>{formatBytes(rates[entry.id])}/s</small>}
+          {estimatedTimeRemaining(entry, rates[entry.id] ?? 0) && <small>{estimatedTimeRemaining(entry, rates[entry.id] ?? 0)}</small>}
         </>}
         {queueErrorDescription(entry.errorCode) && <small className="queue-error">{queueErrorDescription(entry.errorCode)}</small>}
       </div>
       <div className="job-actions">
+        {entry.state === 'completed' && entry.purpose !== 'probe' && <>
+          <button disabled={busy || !online} onClick={() => onOpen(entry.id, 'file')}>Open file</button>
+          <button className="secondary" disabled={busy || !online} onClick={() => onOpen(entry.id, 'folder')}>Open folder</button>
+        </>}
         {['queued', 'paused'].includes(entry.state) && <label>Priority<select aria-label={`Priority for task ${entry.id.slice(0, 8)}`}
           value={entry.priority} disabled={busy || !online}
           onChange={event => onPriority(entry.id, event.target.value as QueueJob['priority'])}>
