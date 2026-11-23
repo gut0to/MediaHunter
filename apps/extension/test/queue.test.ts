@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { job } from '@mediahunter/contracts';
-import { canApplyQueueAction, formatBytes, isActiveDownload, matchesQueueFilter, progressPercent, queueErrorDescription, queueStateLabel, relativeTime, searchQueueJob, sortQueueJobs, type QueueJob } from '../src/queue';
+import { canApplyQueueAction, estimatedTimeRemaining, formatBytes, isActiveDownload, matchesQueueFilter, progressPercent, queueErrorDescription, queueStateLabel, relativeTime, searchQueueJob, sortQueueJobs, type QueueJob } from '../src/queue';
 
 function entry(state: QueueJob['state'], purpose: 'download' | 'probe' = 'download', errorCode: QueueJob['errorCode'] = null): QueueJob {
   return job.parse({ id: '00000000-0000-4000-8000-000000000001', state, bytesDownloaded: 0, totalBytes: null, purpose, errorCode,
@@ -63,4 +63,14 @@ test('queue sorts remain stable for timeline priority and progress views', () =>
   expect(sortQueueJobs([low, high], 'priority').map(entry => entry.id)).toEqual([high.id, low.id]);
   expect(sortQueueJobs([low, progressing], 'progress')[0].id).toBe(progressing.id);
   expect(sortQueueJobs([low, high], 'recent')[0].id).toBe(high.id);
+});
+
+test('remaining time requires a known size and positive transfer rate', () => {
+  const downloading = job.parse({ id: '00000000-0000-4000-8000-000000000001', state: 'downloading',
+    bytesDownloaded: 55, totalBytes: 100, errorCode: null, createdAt: 1_000, updatedAt: 2_000 });
+  expect(estimatedTimeRemaining(downloading, 1)).toBe('About 45s left');
+  expect(estimatedTimeRemaining(downloading, 0.5)).toBe('About 2m left');
+  expect(estimatedTimeRemaining({ ...downloading, bytesDownloaded: 100 }, 10)).toBe('Finishing');
+  expect(estimatedTimeRemaining(downloading, 0)).toBeUndefined();
+  expect(estimatedTimeRemaining(entry('queued'), 10)).toBeUndefined();
 });
