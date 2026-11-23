@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
+import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, relativeTime, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
@@ -59,6 +59,7 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
       <div className="queue-job-copy">
         <strong>{queueStateLabel(entry)}</strong>
         <small>{entry.id.slice(0, 8)} · {queuePriorityLabel(entry.priority)}{entry.attempts > 0 ? ` · Attempt ${entry.attempts} of 3` : ''}</small>
+        <small>Updated {relativeTime(entry.updatedAt)}</small>
         {retryCountdown(entry) && <small>{retryCountdown(entry)}</small>}
         {entry.state === 'downloading' && <>
           <progress aria-label={`Progress for task ${entry.id.slice(0, 8)}`} max={entry.totalBytes || undefined}
