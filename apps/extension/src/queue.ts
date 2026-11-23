@@ -3,7 +3,9 @@ import { job } from '@mediahunter/contracts';
 export type QueueJob = ReturnType<typeof job.parse>;
 export type QueueFilter = 'active' | 'completed' | 'attention' | 'all';
 export type QueueAction = 'pause' | 'retry' | 'cancel';
+export type QueueSort = 'recent' | 'oldest' | 'priority' | 'progress';
 export const queueFilters: QueueFilter[] = ['active', 'completed', 'attention', 'all'];
+export const queueSorts: QueueSort[] = ['recent', 'oldest', 'priority', 'progress'];
 
 const activeStates = new Set<QueueJob['state']>(['queued', 'leased', 'downloading', 'paused']);
 
@@ -102,6 +104,19 @@ export function formatBytes(bytes: number): string {
 export function progressPercent(entry: QueueJob): number | undefined {
   if (!entry.totalBytes) return undefined;
   return Math.min(100, Math.round(entry.bytesDownloaded / entry.totalBytes * 100));
+}
+
+export function sortQueueJobs(jobs: QueueJob[], sort: QueueSort): QueueJob[] {
+  const priority = { high: 0, normal: 1, low: 2 } as const;
+  return [...jobs].sort((left, right) => {
+    if (sort === 'oldest') return left.createdAt - right.createdAt || left.id.localeCompare(right.id);
+    if (sort === 'priority') return priority[left.priority] - priority[right.priority] || left.createdAt - right.createdAt;
+    if (sort === 'progress') {
+      const difference = (progressPercent(right) ?? -1) - (progressPercent(left) ?? -1);
+      if (difference) return difference;
+    }
+    return right.updatedAt - left.updatedAt || right.createdAt - left.createdAt;
+  });
 }
 
 export function canApplyQueueAction(entry: QueueJob, action: QueueAction): boolean {
