@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { canApplyQueueAction, eligibleQueueJobs, formatBytes, progressPercent, queueErrorDescription, queueFilterCount, queueFilters, queueSorts, matchesQueueFilter, queuePriorityLabel, queueStateLabel, relativeTime, retryCountdown, searchQueueJob, sortQueueJobs, type QueueAction, type QueueFilter, type QueueJob, type QueueSort } from './queue';
 
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
@@ -14,6 +14,14 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
   const selectable = visible.filter(entry => (['pause', 'retry', 'cancel'] as const).some(action => canApplyQueueAction(entry, action)));
   const selected = selectable.filter(entry => selectedIds.includes(entry.id));
   const eligible = (action: QueueAction) => eligibleQueueJobs(selected, action);
+  useEffect(() => {
+    const actionable = new Set(jobs.filter(entry => (['pause', 'retry', 'cancel'] as const)
+      .some(action => canApplyQueueAction(entry, action))).map(entry => entry.id));
+    setSelectedIds(current => {
+      const next = current.filter(id => actionable.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [jobs]);
   const setFilterAndClear = (value: QueueFilter) => { setFilter(value); setSelectedIds([]); };
   const runBulkAction = (action: QueueAction) => {
     const entries = eligible(action);
