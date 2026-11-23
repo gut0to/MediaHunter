@@ -106,6 +106,16 @@ export function progressPercent(entry: QueueJob): number | undefined {
   return Math.min(100, Math.round(entry.bytesDownloaded / entry.totalBytes * 100));
 }
 
+export function estimatedTimeRemaining(entry: QueueJob, bytesPerSecond: number): string | undefined {
+  if (entry.state !== 'downloading' || !entry.totalBytes || bytesPerSecond <= 0) return undefined;
+  const seconds = Math.ceil(Math.max(0, entry.totalBytes - entry.bytesDownloaded) / bytesPerSecond);
+  if (!seconds) return 'Finishing';
+  if (seconds < 60) return `About ${seconds}s left`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `About ${minutes}m left`;
+  return `About ${Math.ceil(minutes / 60)}h left`;
+}
+
 export function sortQueueJobs(jobs: QueueJob[], sort: QueueSort): QueueJob[] {
   const priority = { high: 0, normal: 1, low: 2 } as const;
   return [...jobs].sort((left, right) => {
