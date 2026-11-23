@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { job } from '@mediahunter/contracts';
-import { canApplyQueueAction, formatBytes, isActiveDownload, matchesQueueFilter, progressPercent, queueErrorDescription, queueStateLabel, relativeTime, searchQueueJob, type QueueJob } from '../src/queue';
+import { canApplyQueueAction, formatBytes, isActiveDownload, matchesQueueFilter, progressPercent, queueErrorDescription, queueStateLabel, relativeTime, searchQueueJob, sortQueueJobs, type QueueJob } from '../src/queue';
 
 function entry(state: QueueJob['state'], purpose: 'download' | 'probe' = 'download', errorCode: QueueJob['errorCode'] = null): QueueJob {
   return job.parse({ id: '00000000-0000-4000-8000-000000000001', state, bytesDownloaded: 0, totalBytes: null, purpose, errorCode,
@@ -49,4 +49,18 @@ test('relative job times stay concise across useful ranges', () => {
   expect(relativeTime(now - 5 * 60_000, now)).toBe('5m ago');
   expect(relativeTime(now - 3 * 60 * 60_000, now)).toBe('3h ago');
   expect(relativeTime(now - 2 * 24 * 60 * 60_000, now)).toBe('2d ago');
+});
+
+test('queue sorts remain stable for timeline priority and progress views', () => {
+  const make = (suffix: number, values: Partial<QueueJob>) => job.parse({
+    id: `00000000-0000-4000-8000-${suffix.toString().padStart(12, '0')}`, state: 'queued', bytesDownloaded: 0,
+    totalBytes: null, errorCode: null, createdAt: suffix * 100, updatedAt: suffix * 100, ...values,
+  });
+  const low = make(1, { priority: 'low' });
+  const high = make(2, { priority: 'high' });
+  const progressing = make(3, { state: 'downloading', bytesDownloaded: 75, totalBytes: 100 });
+  expect(sortQueueJobs([low, high], 'oldest').map(entry => entry.id)).toEqual([low.id, high.id]);
+  expect(sortQueueJobs([low, high], 'priority').map(entry => entry.id)).toEqual([high.id, low.id]);
+  expect(sortQueueJobs([low, progressing], 'progress')[0].id).toBe(progressing.id);
+  expect(sortQueueJobs([low, high], 'recent')[0].id).toBe(high.id);
 });
