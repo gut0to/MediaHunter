@@ -37,6 +37,16 @@ export function retryCountdown(entry: QueueJob, now = Date.now()): string | unde
   return seconds < 60 ? `Retrying in ${seconds}s` : `Retrying in ${Math.ceil(seconds / 60)}m`;
 }
 
+export function relativeTime(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 const errorDescriptions: Record<NonNullable<QueueJob['errorCode']>, string> = {
   DOWNLOAD_FAILED: 'The source did not finish sending the file.',
   HTTP_ERROR: 'The media server rejected the request.',
