@@ -4,7 +4,8 @@ import { canApplyQueueAction, eligibleQueueJobs, estimatedTimeRemaining, formatB
 type Props = { jobs: QueueJob[]; rates?: Record<string, number>; online: boolean; busy: boolean;
   onAction: (id: string, action: QueueAction) => void; onBulkAction: (ids: string[], action: QueueAction) => void;
   onPriority: (id: string, priority: QueueJob['priority']) => void;
-  onOpen: (id: string, action: 'file' | 'folder') => void; onExport: () => void; onClear: () => void };
+  onOpen: (id: string, action: 'file' | 'folder') => void;
+  onExport: (format: 'json' | 'csv') => void; onClear: () => void };
 
 export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBulkAction, onPriority, onOpen, onExport, onClear }: Props) {
   const [filter, setFilter] = useState<QueueFilter>('active');
@@ -46,7 +47,8 @@ export function DownloadsQueue({ jobs, rates = {}, online, busy, onAction, onBul
         {queueSorts.map(value => <option key={value} value={value}>{value === 'recent' ? 'Recently updated' :
           value === 'oldest' ? 'Oldest first' : value === 'priority' ? 'Priority' : 'Progress'}</option>)}
       </select></label>
-      <button className="secondary" disabled={busy} onClick={onExport}>Export JSON</button>
+      <button className="secondary" disabled={busy} onClick={() => onExport('json')}>Export JSON</button>
+      <button className="secondary" disabled={busy} onClick={() => onExport('csv')}>Export CSV</button>
       <button className="secondary" disabled={busy || !online} onClick={onClear}>Clear finished history</button>
     </div>
     {selectable.length > 0 && <div className="queue-bulk-actions">
