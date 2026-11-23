@@ -338,6 +338,14 @@ function Popup() {
     });
   }
 
+  function requestOpen(id: string, action: 'file' | 'folder') {
+    if (!connection) return;
+    void run(async () => {
+      await api(connection, `/jobs/${id}/open`, { action });
+      setMessage(action === 'file' ? 'Open file request sent to the Windows agent.' : 'Open folder request sent to the Windows agent.');
+    });
+  }
+
   function exportHistory() {
     void run(async () => {
       const data = JSON.stringify(jobs, null, 2);
@@ -388,7 +396,7 @@ function Popup() {
       </select></label>
       <DownloadsQueue jobs={jobs} rates={rates} online={online} busy={busy}
         onAction={(id, action) => applyQueueAction([id], action)}
-        onBulkAction={applyQueueAction} onPriority={applyPriority} onExport={exportHistory} onClear={clearHistory} />
+        onBulkAction={applyQueueAction} onPriority={applyPriority} onOpen={requestOpen} onExport={exportHistory} onClear={clearHistory} />
       <button className="secondary" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>Capture options</button>
       {advanced && <section>
         <label>Extra media origins<input value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} placeholder="https://media.example.net" /></label>
